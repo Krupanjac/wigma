@@ -1,25 +1,61 @@
 <div class="px-3 py-3 border-b border-zinc-800">
   <div class="flex items-center justify-between mb-2">
     <span class="text-xs font-semibold text-zinc-400">Fill</span>
-    <button class="text-zinc-500 hover:text-white text-xs">+</button>
+    <label class="flex items-center gap-1 text-[10px] text-zinc-500 select-none">
+      <input
+        type="checkbox"
+        class="accent-blue-500"
+        [checked]="node ? node.fill.visible : true"
+        (change)="toggleFillVisible()"
+      />
+      Visible
+    </label>
   </div>
   <div class="flex items-center gap-2">
-    <div
-      class="w-6 h-6 rounded border border-zinc-700 cursor-pointer"
-      [style.background]="node ? colorToCss(node.fill.color) : 'transparent'"
-    ></div>
+    <label class="relative w-9 h-9 rounded-lg border border-zinc-700 cursor-pointer overflow-hidden">
+      <div class="absolute inset-0" [style.background]="node ? colorToCss(node.fill.color) : 'transparent'"></div>
+      <input
+        type="color"
+        class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+        [value]="node ? colorToHex(node.fill.color) : '#000000'"
+        (input)="setFillPickerHex($any($event.target).value)"
+      />
+    </label>
     <input
       type="text"
       [value]="node ? colorToHex(node.fill.color) : ''"
       (change)="setFillHex($any($event.target).value)"
       class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white flex-1 focus:border-blue-500 outline-none font-mono"
     />
-    <input
-      type="number"
-      [value]="node ? Math.round(node.fill.color.a * 100) : 100"
-      min="0" max="100"
-      (change)="setFillOpacityPercent($any($event.target).value)"
-      class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-14 focus:border-blue-500 outline-none"
-    />
+
+    <div class="flex items-center">
+      <input
+        type="number"
+        [value]="node ? Math.round(node.fill.color.a * 100) : 100"
+        min="0" max="100"
+        (change)="setFillOpacityPercent($any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-16 h-9 focus:border-blue-500 outline-none text-center"
+      />
+      <div class="flex flex-col">
+        <button
+          type="button"
+          class="w-7 h-[18px] flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 rounded-tr-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
+          (click)="nudgeFillOpacity(1, $event)"
+          title="Increase (Shift = x10)"
+          aria-label="Increase fill opacity"
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          class="w-7 h-[18px] flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 border-t-0 rounded-br-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
+          (click)="nudgeFillOpacity(-1, $event)"
+          title="Decrease (Shift = x10)"
+          aria-label="Decrease fill opacity"
+        >
+          ▼
+        </button>
+      </div>
+    </div>
   </div>
 </div>

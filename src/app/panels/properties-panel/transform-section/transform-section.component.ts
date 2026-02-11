@@ -35,12 +35,29 @@ export class TransformSectionComponent {
     this.engine?.sceneGraph.notifyNodeChanged(this.node);
   }
 
+  nudgeNumber(key: 'x' | 'y' | 'width' | 'height' | 'rotation', delta: number, event?: MouseEvent): void {
+    if (!this.node) return;
+    const step = event?.shiftKey ? 10 : 1;
+    const current = (this.node as unknown as Record<string, number>)[key] ?? 0;
+    const next = current + delta * step;
+    (this.node as unknown as Record<string, number>)[key] = next;
+    this.engine?.sceneGraph.notifyNodeChanged(this.node);
+  }
+
   setPolygonSides(raw: string): void {
     const poly = this.asPolygon(this.node);
     if (!poly) return;
     const value = Math.max(3, Math.floor(Number(raw)));
     if (!Number.isFinite(value)) return;
     poly.sides = value;
+    this.engine?.sceneGraph.notifyNodeChanged(poly);
+  }
+
+  nudgePolygonSides(delta: number, event?: MouseEvent): void {
+    const poly = this.asPolygon(this.node);
+    if (!poly) return;
+    const step = event?.shiftKey ? 5 : 1;
+    poly.sides = Math.max(3, poly.sides + delta * step);
     this.engine?.sceneGraph.notifyNodeChanged(poly);
   }
 
@@ -53,12 +70,28 @@ export class TransformSectionComponent {
     this.engine?.sceneGraph.notifyNodeChanged(star);
   }
 
+  nudgeStarPoints(delta: number, event?: MouseEvent): void {
+    const star = this.asStar(this.node);
+    if (!star) return;
+    const step = event?.shiftKey ? 5 : 1;
+    star.points = Math.max(3, star.points + delta * step);
+    this.engine?.sceneGraph.notifyNodeChanged(star);
+  }
+
   setStarInnerRatio(raw: string): void {
     const star = this.asStar(this.node);
     if (!star) return;
     const value = Number(raw);
     if (!Number.isFinite(value)) return;
     star.innerRadiusRatio = value;
+    this.engine?.sceneGraph.notifyNodeChanged(star);
+  }
+
+  nudgeStarInnerRatio(delta: number, event?: MouseEvent): void {
+    const star = this.asStar(this.node);
+    if (!star) return;
+    const step = event?.shiftKey ? 0.1 : 0.01;
+    star.innerRadiusRatio = star.innerRadiusRatio + delta * step;
     this.engine?.sceneGraph.notifyNodeChanged(star);
   }
 

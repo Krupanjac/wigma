@@ -21,6 +21,8 @@ import { BaseNode } from '../../engine/scene-graph/base-node';
 export class PropertiesPanelComponent implements OnChanges, OnDestroy {
   private ngZone = inject(NgZone);
 
+  readonly Math = Math;
+
   @Input() engine: CanvasEngine | null = null;
 
   readonly selectedNodes = signal<BaseNode[]>([]);
@@ -30,6 +32,7 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
   readonly hasText = computed(() => this.selectedNodes().some(n => n.type === 'text'));
 
   private unsubscribeSelection: (() => void) | null = null;
+  private rafPending = false;
 
   ngOnChanges(): void {
     this.unsubscribeSelection?.();
@@ -41,9 +44,14 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
     }
 
     const sync = () => {
-      const nodes = this.engine?.selection.selectedNodes ?? [];
-      this.ngZone.run(() => {
-        this.selectedNodes.set(nodes);
+      if (this.rafPending) return;
+      this.rafPending = true;
+      requestAnimationFrame(() => {
+        this.rafPending = false;
+        const nodes = this.engine?.selection.selectedNodes ?? [];
+        this.ngZone.run(() => {
+          this.selectedNodes.set(nodes);
+        });
       });
     };
 
@@ -53,5 +61,48 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.unsubscribeSelection?.();
+  }
+
+  setName(raw: string): void {
+    const node = this.selectedNode();
+    if (!node || !this.engine) return;
+    const name = raw.trim();
+    if (!name) return;
+    node.name = name;
+    this.engine.sceneGraph.notifyNodeChanged(node);
+  }
+
+  toggleVisible(): void {
+    const node = this.selectedNode();
+    if (!node || !this.engine) return;
+    node.visible = !node.visible;
+    this.engine.sceneGraph.notifyNodeChanged(node);
+  }
+
+  toggleLocked(): void {
+    const node = this.selectedNode();
+    if (!node || !this.engine) return;
+    node.locked = !node.locked;
+    this.engine.sceneGraph.notifyNodeChanged(node);
+  }
+
+  setOpacityPercent(raw: string): void {
+    const node = this.selectedNode();
+    if (!node || !this.engine) return;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return;
+    const clamped = Math.max(0, Math.min(100, value));
+    node.opacity = clamped / 100;
+    this.engine.sceneGraph.notifyNodeChanged(node);
+  }
+
+  nudgeOpacity(delta: number, event?: MouseEvent): void {
+    const node = this.selectedNode();
+    if (!node || !this.engine) return;
+    const step = event?.shiftKey ? 10 : 1;
+    const current = Math.round(node.opacity * 100);
+    const next = Math.max(0, Math.min(100, current + delta * step));
+    node.opacity = next / 100;
+    this.engine.sceneGraph.notifyNodeChanged(node);
   }
 }

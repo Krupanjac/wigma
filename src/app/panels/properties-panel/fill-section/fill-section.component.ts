@@ -31,12 +31,41 @@ export class FillSectionComponent {
     this.engine?.sceneGraph.notifyNodeChanged(this.node);
   }
 
+  setFillPickerHex(raw: string): void {
+    if (!this.node) return;
+    const hex = raw.trim();
+    if (!/^#?[0-9a-fA-F]{6}$/.test(hex)) return;
+    const picked = hexToColor(hex.startsWith('#') ? hex : `#${hex}`);
+    // Preserve current alpha from the opacity input.
+    const color = { ...picked, a: this.node.fill.color.a };
+    this.node.fill = { ...this.node.fill, color };
+    this.node.markRenderDirty();
+    this.engine?.sceneGraph.notifyNodeChanged(this.node);
+  }
+
   setFillOpacityPercent(raw: string): void {
     if (!this.node) return;
     const value = Number(raw);
     if (!Number.isFinite(value)) return;
     const clamped = Math.max(0, Math.min(100, value));
     this.node.fill = { ...this.node.fill, color: { ...this.node.fill.color, a: clamped / 100 } };
+    this.node.markRenderDirty();
+    this.engine?.sceneGraph.notifyNodeChanged(this.node);
+  }
+
+  nudgeFillOpacity(delta: number, event?: MouseEvent): void {
+    if (!this.node) return;
+    const step = event?.shiftKey ? 10 : 1;
+    const current = Math.round(this.node.fill.color.a * 100);
+    const next = Math.max(0, Math.min(100, current + delta * step));
+    this.node.fill = { ...this.node.fill, color: { ...this.node.fill.color, a: next / 100 } };
+    this.node.markRenderDirty();
+    this.engine?.sceneGraph.notifyNodeChanged(this.node);
+  }
+
+  toggleFillVisible(): void {
+    if (!this.node) return;
+    this.node.fill = { ...this.node.fill, visible: !this.node.fill.visible };
     this.node.markRenderDirty();
     this.engine?.sceneGraph.notifyNodeChanged(this.node);
   }

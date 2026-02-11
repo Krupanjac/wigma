@@ -1,6 +1,6 @@
 # Wigma
 
-A Figma-like vector design engine built with **Angular 19**, **PixiJS 8**, **Tailwind CSS 4.1**, and **rbush** R-tree spatial indexing. Wigma provides GPU-accelerated canvas rendering, a rich tool palette, undo/redo history, and a dark-themed professional UI.
+A Figma-like vector design engine built with **Angular 21**, **PixiJS 8**, **Tailwind CSS 4.1**, and **rbush** R-tree spatial indexing. Wigma provides GPU-accelerated canvas rendering, a rich tool palette, undo/redo history, and a dark-themed professional UI.
 
 ---
 
