@@ -52,6 +52,22 @@ export class ViewportManager {
 
   // ── Zoom ──
 
+  /**
+   * Trackpad/mouse-wheel pan in screen-space pixels.
+   * Matches typical design tool behavior: two-finger scroll pans the canvas.
+   */
+  scrollPan(deltaX: number, deltaY: number): void {
+    const dx = (deltaX / this.camera.zoom) * PAN_SPEED;
+    const dy = (deltaY / this.camera.zoom) * PAN_SPEED;
+
+    // Figma-like: canvas follows finger direction on trackpads.
+    // With our camera model (world - camera), that means moving camera opposite.
+    this.camera.setPosition(
+      this.camera.x + dx,
+      this.camera.y + dy
+    );
+  }
+
   /** Scroll-wheel zoom toward a screen-space anchor. */
   scrollZoom(delta: number, anchorX: number, anchorY: number): void {
     this.zoomController.zoomBy(delta, anchorX, anchorY);

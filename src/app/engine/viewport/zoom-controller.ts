@@ -10,6 +10,12 @@ export class ZoomController {
   private currentZoom: number = 1;
   private lerpFramesRemaining: number = 0;
 
+  private hasAnchor: boolean = false;
+  private anchorScreenX: number = 0;
+  private anchorScreenY: number = 0;
+  private anchorWorldX: number = 0;
+  private anchorWorldY: number = 0;
+
   constructor(private camera: Camera) {
     this.targetZoom = camera.zoom;
     this.currentZoom = camera.zoom;
@@ -27,16 +33,13 @@ export class ZoomController {
     this.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.targetZoom * factor));
     this.lerpFramesRemaining = ZOOM_LERP_FRAMES;
 
-    // Adjust camera position to zoom toward anchor point
-    const worldBeforeX = (anchorX / this.currentZoom) + this.camera.x;
-    const worldBeforeY = (anchorY / this.currentZoom) + this.camera.y;
-    const worldAfterX = (anchorX / this.targetZoom) + this.camera.x;
-    const worldAfterY = (anchorY / this.targetZoom) + this.camera.y;
-
-    this.camera.setPosition(
-      this.camera.x + (worldBeforeX - worldAfterX),
-      this.camera.y + (worldBeforeY - worldAfterY)
-    );
+    // Preserve the world point under the cursor for the entire lerp.
+    // (Without this, the point drifts while zoom is interpolating.)
+    this.hasAnchor = true;
+    this.anchorScreenX = anchorX;
+    this.anchorScreenY = anchorY;
+    this.anchorWorldX = (anchorX / this.currentZoom) + this.camera.x;
+    this.anchorWorldY = (anchorY / this.currentZoom) + this.camera.y;
   }
 
   /** Immediate zoom (no animation). */
@@ -44,6 +47,7 @@ export class ZoomController {
     this.targetZoom = zoom;
     this.currentZoom = zoom;
     this.lerpFramesRemaining = 0;
+    this.hasAnchor = false;
     this.camera.setZoom(zoom);
   }
 
@@ -60,6 +64,13 @@ export class ZoomController {
     }
 
     this.camera.setZoom(this.currentZoom);
+
+    if (this.hasAnchor) {
+      this.camera.setPosition(
+        this.anchorWorldX - (this.anchorScreenX / this.currentZoom),
+        this.anchorWorldY - (this.anchorScreenY / this.currentZoom)
+      );
+    }
     return true;
   }
 }

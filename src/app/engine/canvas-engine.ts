@@ -122,9 +122,15 @@ export class CanvasEngine {
     this.interaction.attach(container);
     this.viewport.resize(container.clientWidth, container.clientHeight);
 
-    // Setup wheel → zoom
+    // Figma-like trackpad/mouse mappings:
+    // - Two-finger scroll / wheel pans
+    // - Pinch-to-zoom (typically delivered as ctrl+wheel) zooms toward cursor
     this.interaction.onWheel(e => {
-      this.viewport.scrollZoom(e.deltaY, e.offsetX, e.offsetY);
+      if (e.ctrlKey) {
+        this.viewport.scrollZoom(e.deltaY, e.offsetX, e.offsetY);
+      } else {
+        this.viewport.scrollPan(e.deltaX, e.deltaY);
+      }
     });
 
     // Start render loop
