@@ -1,0 +1,15 @@
+<div class="flex flex-col items-center gap-1 py-2 px-1 bg-zinc-900 border-r border-zinc-800 h-full">
+  @for (tool of tools; track tool.type) {
+    <button
+      class="w-9 h-9 flex items-center justify-center rounded-lg transition-colors"
+      [class.bg-blue-600]="activeToolType() === tool.type"
+      [class.text-white]="activeToolType() === tool.type"
+      [class.text-zinc-400]="activeToolType() !== tool.type"
+      [class.hover:bg-zinc-700]="activeToolType() !== tool.type"
+      [title]="tool.label + ' (' + tool.shortcut + ')'"
+      (click)="selectTool(tool.type)"
+    >
+      <span class="text-sm font-mono">{{ tool.icon }}</span>
+    </button>
+  }
+</div>

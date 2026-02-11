@@ -1,0 +1,23 @@
+<!-- Wigma — Figma-like Design Engine Shell -->
+<div class="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden select-none">
+  <!-- Menu Bar -->
+  <app-menu-bar class="shrink-0" />
+
+  <!-- Main Workspace -->
+  <div class="flex flex-1 min-h-0">
+    <!-- Left: Toolbar -->
+    <app-toolbar class="shrink-0" />
+
+    <!-- Left: Layers Panel -->
+    <app-layers-panel class="shrink-0 w-60 border-r border-zinc-800" />
+
+    <!-- Center: Canvas -->
+    <app-canvas class="flex-1 min-w-0" [engine]="engine" />
+
+    <!-- Right: Properties Panel -->
+    <app-properties-panel class="shrink-0 w-72 border-l border-zinc-800" />
+  </div>
+</div>
+
+<!-- Context Menu (portal, positioned absolutely) -->
+<app-context-menu />

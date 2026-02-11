@@ -1,0 +1,35 @@
+<div class="flex items-center gap-0 bg-zinc-900 border-b border-zinc-800 px-2 h-10">
+  <!-- App name -->
+  <span class="text-sm font-bold text-zinc-300 mr-4 tracking-wide">Wigma</span>
+
+  <!-- Menu items -->
+  @for (menu of menus; track menu.label) {
+    <div class="relative" (mouseenter)="openMenu(menu.label)" (mouseleave)="closeMenu()">
+      <button
+        class="px-3 py-1 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+      >
+        {{ menu.label }}
+      </button>
+
+      @if (activeMenu() === menu.label) {
+        <div class="absolute top-full left-0 mt-0.5 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-48 z-50">
+          @for (item of menu.items; track item.label) {
+            @if (item.separator) {
+              <div class="border-t border-zinc-700 my-1"></div>
+            } @else {
+              <button
+                class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white flex items-center justify-between transition-colors"
+                (click)="item.action(); closeMenu()"
+              >
+                <span>{{ item.label }}</span>
+                @if (item.shortcut) {
+                  <span class="text-zinc-500 ml-4">{{ item.shortcut }}</span>
+                }
+              </button>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

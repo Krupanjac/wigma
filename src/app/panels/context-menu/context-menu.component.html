@@ -1,0 +1,23 @@
+@if (visible()) {
+  <div
+    class="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-48 z-[100]"
+    [style.left.px]="position().x"
+    [style.top.px]="position().y"
+  >
+    @for (item of items(); track item.label) {
+      @if (item.separator) {
+        <div class="border-t border-zinc-700 my-1"></div>
+      } @else {
+        <button
+          class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white flex items-center justify-between transition-colors"
+          (click)="item.action(); hide()"
+        >
+          <span>{{ item.label }}</span>
+          @if (item.shortcut) {
+            <span class="text-zinc-500 ml-4">{{ item.shortcut }}</span>
+          }
+        </button>
+      }
+    }
+  </div>
+}
