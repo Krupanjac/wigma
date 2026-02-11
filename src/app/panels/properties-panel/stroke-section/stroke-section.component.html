@@ -4,16 +4,21 @@
     <button class="text-zinc-500 hover:text-white text-xs">+</button>
   </div>
   <div class="flex items-center gap-2">
-    <div class="w-6 h-6 rounded border border-zinc-600 bg-transparent cursor-pointer"></div>
+    <div
+      class="w-6 h-6 rounded border border-zinc-600 cursor-pointer"
+      [style.background]="node ? colorToCss(node.stroke.color) : 'transparent'"
+    ></div>
     <input
       type="text"
-      value="#71717A"
+      [value]="node ? colorToHex(node.stroke.color) : ''"
+      (change)="setStrokeHex($any($event.target).value)"
       class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white flex-1 focus:border-blue-500 outline-none font-mono"
     />
     <input
       type="number"
-      value="1"
+      [value]="node ? node.stroke.width : 0"
       min="0"
+      (change)="setStrokeWidth($any($event.target).value)"
       class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-14 focus:border-blue-500 outline-none"
     />
   </div>

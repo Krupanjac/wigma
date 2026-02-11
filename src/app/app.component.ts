@@ -45,6 +45,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private menuCommands = inject(MenuCommandsService);
 
   engine: CanvasEngine | null = null;
+  title = 'wigma';
 
   ngOnInit(): void {
     // Create engine outside Angular zone

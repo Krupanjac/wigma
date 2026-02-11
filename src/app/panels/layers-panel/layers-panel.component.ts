@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input, OnChanges, OnDestroy, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, NgZone, OnChanges, OnDestroy, inject, signal } from '@angular/core';
 import { CanvasEngine } from '../../engine/canvas-engine';
 
 interface LayerEntry {
@@ -20,17 +20,23 @@ interface LayerEntry {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayersPanelComponent implements OnChanges, OnDestroy {
+  private ngZone = inject(NgZone);
+
   @Input() engine: CanvasEngine | null = null;
 
   /** Flat list of nodes to show (excluding root). */
   readonly nodes = signal<LayerEntry[]>([]);
-  private selectedSet = new Set<string>();
+  readonly selectedIds = signal<Set<string>>(new Set());
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeSelection: (() => void) | null = null;
 
   ngOnChanges(): void {
     // Unsubscribe from previous engine
     this.unsubscribe?.();
     this.unsubscribe = null;
+
+    this.unsubscribeSelection?.();
+    this.unsubscribeSelection = null;
 
     if (!this.engine) return;
 
@@ -41,10 +47,18 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
     this.unsubscribe = this.engine.sceneGraph.on(() => {
       this.refreshNodes();
     });
+
+    const syncSelection = () => {
+      const ids = new Set(this.engine?.selection.selectedNodeIds ?? []);
+      this.ngZone.run(() => this.selectedIds.set(ids));
+    };
+    syncSelection();
+    this.unsubscribeSelection = this.engine.selection.onChange(syncSelection);
   }
 
   ngOnDestroy(): void {
     this.unsubscribe?.();
+    this.unsubscribeSelection?.();
   }
 
   private refreshNodes(): void {
@@ -56,22 +70,11 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
   }
 
   isSelected(id: string): boolean {
-    return this.selectedSet.has(id);
+    return this.selectedIds().has(id);
   }
 
   onLayerClick(id: string, event: MouseEvent): void {
     if (!this.engine) return;
-
-    if (event.shiftKey) {
-      if (this.selectedSet.has(id)) {
-        this.selectedSet.delete(id);
-      } else {
-        this.selectedSet.add(id);
-      }
-    } else {
-      this.selectedSet.clear();
-      this.selectedSet.add(id);
-    }
 
     // Sync with engine selection
     const node = this.engine.sceneGraph.getNode(id);

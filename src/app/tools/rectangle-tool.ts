@@ -49,6 +49,8 @@ export class RectangleTool extends BaseTool {
       this.currentNode.width = Math.abs(delta.x);
       this.currentNode.height = Math.abs(delta.y);
     }
+
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_event: PointerEventData): void {
@@ -58,6 +60,7 @@ export class RectangleTool extends BaseTool {
         this.engine.sceneGraph.removeNode(this.currentNode);
       } else {
         this.engine.selection.select(this.currentNode);
+        this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
       }
     }
     this.currentNode = null;

@@ -9,11 +9,11 @@
     @if (selectedCount() === 0) {
       <div class="p-4 text-xs text-zinc-500 text-center">Select a layer to view properties</div>
     } @else {
-      <app-transform-section />
-      <app-fill-section />
-      <app-stroke-section />
+      <app-transform-section [engine]="engine" [node]="selectedNode()" />
+      <app-fill-section [engine]="engine" [node]="selectedNode()" />
+      <app-stroke-section [engine]="engine" [node]="selectedNode()" />
       @if (hasText()) {
-        <app-text-section />
+        <app-text-section [engine]="engine" [node]="selectedNode()" />
       }
     }
   </div>

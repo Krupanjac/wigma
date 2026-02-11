@@ -3,23 +3,86 @@
   <div class="grid grid-cols-2 gap-2">
     <div class="flex flex-col gap-1">
       <label class="text-[10px] text-zinc-500">X</label>
-      <input type="number" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none" />
+      <input
+        type="number"
+        [value]="node?.x ?? 0"
+        (change)="setNumber('x', $any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+      />
     </div>
     <div class="flex flex-col gap-1">
       <label class="text-[10px] text-zinc-500">Y</label>
-      <input type="number" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none" />
+      <input
+        type="number"
+        [value]="node?.y ?? 0"
+        (change)="setNumber('y', $any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+      />
     </div>
     <div class="flex flex-col gap-1">
       <label class="text-[10px] text-zinc-500">W</label>
-      <input type="number" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none" />
+      <input
+        type="number"
+        [value]="node?.width ?? 0"
+        (change)="setNumber('width', $any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+      />
     </div>
     <div class="flex flex-col gap-1">
       <label class="text-[10px] text-zinc-500">H</label>
-      <input type="number" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none" />
+      <input
+        type="number"
+        [value]="node?.height ?? 0"
+        (change)="setNumber('height', $any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+      />
     </div>
     <div class="flex flex-col gap-1">
       <label class="text-[10px] text-zinc-500">Rotation</label>
-      <input type="number" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none" />
+      <input
+        type="number"
+        [value]="node?.rotation ?? 0"
+        (change)="setNumber('rotation', $any($event.target).value)"
+        class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+      />
     </div>
+
+    @if (asPolygon(node)) {
+      <div class="flex flex-col gap-1">
+        <label class="text-[10px] text-zinc-500">Sides</label>
+        <input
+          type="number"
+          min="3"
+          [value]="asPolygon(node)?.sides ?? 5"
+          (change)="setPolygonSides($any($event.target).value)"
+          class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+        />
+      </div>
+    }
+
+    @if (asStar(node)) {
+      <div class="flex flex-col gap-1">
+        <label class="text-[10px] text-zinc-500">Points</label>
+        <input
+          type="number"
+          min="3"
+          [value]="asStar(node)?.points ?? 5"
+          (change)="setStarPoints($any($event.target).value)"
+          class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+        />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-[10px] text-zinc-500">Inner</label>
+        <input
+          type="number"
+          min="0.01"
+          max="0.99"
+          step="0.01"
+          [value]="asStar(node)?.innerRadiusRatio ?? 0.4"
+          (change)="setStarInnerRatio($any($event.target).value)"
+          class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white w-full focus:border-blue-500 outline-none"
+        />
+      </div>
+    }
   </div>
 </div>

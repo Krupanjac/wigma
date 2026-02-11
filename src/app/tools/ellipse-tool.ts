@@ -38,11 +38,14 @@ export class EllipseTool extends BaseTool {
     this.currentNode.y = Math.min(startPos.y, event.worldPosition.y);
     this.currentNode.width = Math.abs(delta.x);
     this.currentNode.height = event.shiftKey ? Math.abs(delta.x) : Math.abs(delta.y);
+
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_event: PointerEventData): void {
     if (this.currentNode && this.currentNode.width > 1 && this.currentNode.height > 1) {
       this.engine.selection.select(this.currentNode);
+      this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
     } else if (this.currentNode) {
       this.engine.sceneGraph.removeNode(this.currentNode);
     }

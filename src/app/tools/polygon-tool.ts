@@ -19,6 +19,7 @@ export class PolygonTool extends BaseTool {
   override onPointerDown(e: PointerEventData): void {
     this.dragHandler.start(e.screenPosition, e.worldPosition);
     this.currentNode = new PolygonNode();
+    this.currentNode.sides = 5;
     this.currentNode.x = e.worldPosition.x;
     this.currentNode.y = e.worldPosition.y;
     this.currentNode.width = 0;
@@ -36,11 +37,13 @@ export class PolygonTool extends BaseTool {
     this.currentNode.y = s.y - size / 2;
     this.currentNode.width = size;
     this.currentNode.height = size;
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_e: PointerEventData): void {
     if (this.currentNode && this.currentNode.width > 1) {
       this.engine.selection.select(this.currentNode);
+      this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
     } else if (this.currentNode) {
       this.engine.sceneGraph.removeNode(this.currentNode);
     }

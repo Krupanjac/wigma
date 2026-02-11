@@ -7,7 +7,7 @@ import { regularPolygonVertices } from '@shared/utils/geometry-utils';
  * Regular polygon node.
  */
 export class PolygonNode extends BaseNode {
-  private _sides: number = 3;
+  private _sides: number = 5;
   private _vertices: Vec2[] = [];
 
   constructor(name?: string) {
@@ -24,6 +24,24 @@ export class PolygonNode extends BaseNode {
   }
 
   get vertices(): Vec2[] { return this._vertices; }
+
+  override get width(): number { return super.width; }
+  override set width(value: number) {
+    const before = super.width;
+    super.width = value;
+    if (super.width !== before) {
+      this.rebuildVertices();
+    }
+  }
+
+  override get height(): number { return super.height; }
+  override set height(value: number) {
+    const before = super.height;
+    super.height = value;
+    if (super.height !== before) {
+      this.rebuildVertices();
+    }
+  }
 
   private rebuildVertices(): void {
     const cx = this.width / 2;

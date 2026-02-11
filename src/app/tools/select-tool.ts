@@ -98,6 +98,7 @@ export class SelectTool extends BaseTool {
     for (const node of this.engine.selection.selectedNodes) {
       node.x = node.x + delta.x;
       node.y = node.y + delta.y;
+      this.engine.sceneGraph.notifyNodeChanged(node);
     }
   }
 

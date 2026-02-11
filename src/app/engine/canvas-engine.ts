@@ -38,7 +38,7 @@ export class CanvasEngine {
     this.interaction = new InteractionManager(this.viewport);
     this.hitTester = new HitTester(this.sceneGraph, this.spatialIndex);
     this.renderManager = new RenderManager(
-      this.sceneGraph, this.spatialIndex, this.viewport
+      this.sceneGraph, this.spatialIndex, this.viewport, this.selection
     );
 
     // Add default Layer 0

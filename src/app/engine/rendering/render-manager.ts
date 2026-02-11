@@ -4,6 +4,9 @@ import { SpatialIndex } from '../spatial/spatial-index';
 import { ViewportManager } from '../viewport/viewport-manager';
 import { NodeRendererRegistry } from './node-renderer.registry';
 import { BaseNode } from '../scene-graph/base-node';
+import { SelectionManager } from '../selection/selection-manager';
+import { SelectionOverlay } from './overlays/selection-overlay';
+import { Vec2 } from '@shared/math/vec2';
 
 /**
  * RenderManager — creates and owns the PixiJS Application,
@@ -17,10 +20,13 @@ export class RenderManager {
   private displayObjects = new Map<string, Container>();
   private unsubscribe: (() => void) | null = null;
 
+  private selectionOverlay = new SelectionOverlay();
+
   constructor(
     private sceneGraph: SceneGraphManager,
     private spatialIndex: SpatialIndex,
-    private viewport: ViewportManager
+    private viewport: ViewportManager,
+    private selection: SelectionManager
   ) {
     this.rendererRegistry = new NodeRendererRegistry();
 
@@ -56,6 +62,9 @@ export class RenderManager {
     this.worldContainer = new Container();
     this.app.stage.addChild(this.worldContainer);
 
+    // Overlays in screen-space (on top of world)
+    this.selectionOverlay.attach(this.app.stage);
+
     // Sync any nodes added before init (e.g. Layer 0)
     this.syncExistingNodes();
   }
@@ -64,13 +73,13 @@ export class RenderManager {
   frame(): boolean {
     if (!this.app || !this.worldContainer) return false;
 
+    // Update viewport (lerped zoom etc.)
+    this.viewport.update();
+
     // Apply camera transform to the world container
     const cam = this.viewport.camera;
     this.worldContainer.position.set(-cam.x * cam.zoom, -cam.y * cam.zoom);
     this.worldContainer.scale.set(cam.zoom, cam.zoom);
-
-    // Update viewport (lerped zoom etc.)
-    this.viewport.update();
 
     // Sync every tracked display object
     for (const [id, displayObj] of this.displayObjects) {
@@ -98,7 +107,38 @@ export class RenderManager {
       node.clearDirtyFlags();
     }
 
+    // Selection overlay (screen-space)
+    this.updateSelectionOverlay();
+
     return true;
+  }
+
+  private updateSelectionOverlay(): void {
+    if (!this.app) return;
+    const cam = this.viewport.camera;
+
+    if (!this.selection.hasSelection) {
+      this.selectionOverlay.hide();
+      return;
+    }
+
+    const b = this.selection.bounds;
+    if (b.isEmpty) {
+      this.selectionOverlay.hide();
+      return;
+    }
+
+    const topLeft = cam.worldToScreen(new Vec2(b.minX, b.minY));
+    const bottomRight = cam.worldToScreen(new Vec2(b.maxX, b.maxY));
+
+    this.selectionOverlay.show();
+    this.selectionOverlay.update(
+      Math.min(topLeft.x, bottomRight.x),
+      Math.min(topLeft.y, bottomRight.y),
+      Math.max(topLeft.x, bottomRight.x),
+      Math.max(topLeft.y, bottomRight.y),
+      cam.zoom
+    );
   }
 
   // ── private helpers ───────────────────────────────────────
@@ -157,6 +197,7 @@ export class RenderManager {
       obj.destroy();
     }
     this.displayObjects.clear();
+    this.selectionOverlay.dispose();
     this.app?.destroy(true);
     this.app = null;
   }

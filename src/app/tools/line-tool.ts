@@ -42,6 +42,7 @@ export class LineTool extends BaseTool {
     this.currentNode.endPoint = endPoint;
     this.currentNode.markRenderDirty();
     this.currentNode.markBoundsDirty();
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_e: PointerEventData): void {
@@ -51,6 +52,7 @@ export class LineTool extends BaseTool {
         this.engine.sceneGraph.removeNode(this.currentNode);
       } else {
         this.engine.selection.select(this.currentNode);
+        this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
       }
     }
     this.currentNode = null;

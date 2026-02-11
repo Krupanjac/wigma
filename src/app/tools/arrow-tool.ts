@@ -30,6 +30,7 @@ export class ArrowTool extends BaseTool {
     this.currentNode.endPoint = e.worldPosition;
     this.currentNode.markRenderDirty();
     this.currentNode.markBoundsDirty();
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_e: PointerEventData): void {
@@ -39,6 +40,7 @@ export class ArrowTool extends BaseTool {
         this.engine.sceneGraph.removeNode(this.currentNode);
       } else {
         this.engine.selection.select(this.currentNode);
+        this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
       }
     }
     this.currentNode = null;

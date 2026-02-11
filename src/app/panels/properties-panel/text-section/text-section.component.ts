@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { CanvasEngine } from '../../../engine/canvas-engine';
+import { BaseNode } from '../../../engine/scene-graph/base-node';
 
 @Component({
   selector: 'app-text-section',
@@ -8,5 +10,6 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TextSectionComponent {
-
+  @Input() engine: CanvasEngine | null = null;
+  @Input() node: BaseNode | null = null;
 }

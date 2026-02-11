@@ -36,11 +36,13 @@ export class StarTool extends BaseTool {
     this.currentNode.y = s.y - size / 2;
     this.currentNode.width = size;
     this.currentNode.height = size;
+    this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
   }
 
   override onPointerUp(_e: PointerEventData): void {
     if (this.currentNode && this.currentNode.width > 1) {
       this.engine.selection.select(this.currentNode);
+      this.engine.sceneGraph.notifyNodeChanged(this.currentNode);
     } else if (this.currentNode) {
       this.engine.sceneGraph.removeNode(this.currentNode);
     }
