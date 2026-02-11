@@ -1,23 +1,21 @@
+import { Application, Container } from 'pixi.js';
 import { SceneGraphManager } from '../scene-graph/scene-graph-manager';
 import { SpatialIndex } from '../spatial/spatial-index';
 import { ViewportManager } from '../viewport/viewport-manager';
 import { NodeRendererRegistry } from './node-renderer.registry';
-import { RenderPipeline } from './render-pipeline';
+import { BaseNode } from '../scene-graph/base-node';
 
 /**
- * RenderManager orchestrates the three PixiJS RenderGroups:
- * - Content: Scene graph nodes
- * - Overlay: Selection handles, guides, snaps
- * - Grid: Background grid
- *
- * Bridges the scene graph to PixiJS display objects.
+ * RenderManager — creates and owns the PixiJS Application,
+ * manages the world container and display objects for each node.
  */
 export class RenderManager {
-  readonly pipeline: RenderPipeline;
   readonly rendererRegistry: NodeRendererRegistry;
 
-  // Display object tracking
-  private displayObjects = new Map<string, unknown>();
+  private app: Application | null = null;
+  private worldContainer: Container | null = null;
+  private displayObjects = new Map<string, Container>();
+  private unsubscribe: (() => void) | null = null;
 
   constructor(
     private sceneGraph: SceneGraphManager,
@@ -25,15 +23,14 @@ export class RenderManager {
     private viewport: ViewportManager
   ) {
     this.rendererRegistry = new NodeRendererRegistry();
-    this.pipeline = new RenderPipeline(
-      sceneGraph, spatialIndex, viewport, this.rendererRegistry
-    );
 
     // Listen for scene events
-    this.sceneGraph.on(event => {
+    this.unsubscribe = this.sceneGraph.on(event => {
       switch (event.type) {
         case 'node-added':
-          this.onNodeAdded(event.node.id);
+          if (event.node !== this.sceneGraph.root) {
+            this.onNodeAdded(event.node);
+          }
           break;
         case 'node-removed':
           this.onNodeRemoved(event.node.id);
@@ -42,42 +39,125 @@ export class RenderManager {
     });
   }
 
-  /** Run one render frame. */
-  frame(): boolean {
-    return this.pipeline.frame();
+  /** Initialise the PixiJS Application (async). */
+  async init(container: HTMLElement): Promise<void> {
+    this.app = new Application();
+    await this.app.init({
+      background: '#f5f5f5',
+      resizeTo: container,
+      antialias: true,
+      autoDensity: true,
+      resolution: window.devicePixelRatio || 1,
+    });
+
+    container.appendChild(this.app.canvas as HTMLElement);
+
+    // World container moves/scales with camera
+    this.worldContainer = new Container();
+    this.app.stage.addChild(this.worldContainer);
+
+    // Sync any nodes added before init (e.g. Layer 0)
+    this.syncExistingNodes();
   }
 
-  private onNodeAdded(id: string): void {
-    const node = this.sceneGraph.getNode(id);
-    if (!node) return;
+  /** Run one render frame. */
+  frame(): boolean {
+    if (!this.app || !this.worldContainer) return false;
+
+    // Apply camera transform to the world container
+    const cam = this.viewport.camera;
+    this.worldContainer.position.set(-cam.x * cam.zoom, -cam.y * cam.zoom);
+    this.worldContainer.scale.set(cam.zoom, cam.zoom);
+
+    // Update viewport (lerped zoom etc.)
+    this.viewport.update();
+
+    // Sync every tracked display object
+    for (const [id, displayObj] of this.displayObjects) {
+      const node = this.sceneGraph.getNode(id);
+      if (!node) continue;
+
+      // Always update transform (cheap)
+      displayObj.position.set(node.x, node.y);
+      displayObj.rotation = node.rotation;
+      displayObj.scale.set(node.scaleX, node.scaleY);
+      displayObj.alpha = node.opacity;
+      displayObj.visible = node.visible;
+
+      // Re-draw shape only when visual properties changed
+      if (node.dirty.render) {
+        const renderer = this.rendererRegistry.get(node.type);
+        if (renderer) {
+          renderer.sync(node, displayObj);
+        }
+      }
+    }
+
+    // Clear dirty flags on all nodes
+    for (const node of this.sceneGraph.getAllNodes()) {
+      node.clearDirtyFlags();
+    }
+
+    return true;
+  }
+
+  // ── private helpers ───────────────────────────────────────
+
+  private syncExistingNodes(): void {
+    for (const node of this.sceneGraph.getRenderOrder()) {
+      if (!this.displayObjects.has(node.id)) {
+        this.onNodeAdded(node);
+      }
+    }
+  }
+
+  private onNodeAdded(node: BaseNode): void {
+    if (!this.worldContainer) return;
+    if (this.displayObjects.has(node.id)) return;
 
     const renderer = this.rendererRegistry.get(node.type);
     if (!renderer) return;
 
-    const displayObject = renderer.create(node);
-    this.displayObjects.set(id, displayObject);
+    const displayObj = renderer.create(node) as Container;
+    this.displayObjects.set(node.id, displayObj);
+    this.worldContainer.addChild(displayObj);
+
+    // Initial sync
+    renderer.sync(node, displayObj);
+    displayObj.position.set(node.x, node.y);
+    displayObj.rotation = node.rotation;
+    displayObj.scale.set(node.scaleX, node.scaleY);
+    displayObj.alpha = node.opacity;
+    displayObj.visible = node.visible;
   }
 
   private onNodeRemoved(id: string): void {
-    const displayObject = this.displayObjects.get(id);
-    if (displayObject) {
+    const displayObj = this.displayObjects.get(id);
+    if (displayObj && this.worldContainer) {
+      this.worldContainer.removeChild(displayObj);
+      displayObj.destroy();
       this.displayObjects.delete(id);
-      // In full implementation: return to pool
     }
   }
 
-  /** Get the display object for a node. */
-  getDisplayObject(id: string): unknown | undefined {
+  // ── public accessors ──────────────────────────────────────
+
+  getDisplayObject(id: string): Container | undefined {
     return this.displayObjects.get(id);
   }
 
-  /** Get the PixiJS Application instance (if initialized). */
-  getApp(): unknown | null {
-    return null; // Will be set when PixiJS Application is created
+  getApp(): Application | null {
+    return this.app;
   }
 
-  /** Dispose all display objects. */
+  /** Dispose all display objects and the PixiJS app. */
   dispose(): void {
+    this.unsubscribe?.();
+    for (const [, obj] of this.displayObjects) {
+      obj.destroy();
+    }
     this.displayObjects.clear();
+    this.app?.destroy(true);
+    this.app = null;
   }
 }

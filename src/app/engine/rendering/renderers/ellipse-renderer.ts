@@ -1,10 +1,27 @@
+import { Graphics } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
+import { colorToNumber } from '@shared/utils/color-utils';
 
-/** Renderer for EllipseNode. */
-export class EllipseRenderer extends BaseRenderer<unknown> {
+export class EllipseRenderer extends BaseRenderer<Graphics> {
   readonly nodeType: NodeType = 'ellipse';
-  create(_node: BaseNode): unknown { return {}; }
-  sync(_node: BaseNode, _displayObject: unknown): void { /* PixiJS ellipse draw */ }
-  destroy(_displayObject: unknown): void { /* Return to pool */ }
+
+  create(_node: BaseNode): Graphics {
+    return new Graphics();
+  }
+
+  sync(node: BaseNode, gfx: Graphics): void {
+    gfx.clear();
+    gfx.ellipse(node.width / 2, node.height / 2, node.width / 2, node.height / 2);
+    if (node.fill.visible) {
+      gfx.fill({ color: colorToNumber(node.fill.color), alpha: node.fill.color.a });
+    }
+    if (node.stroke.visible && node.stroke.width > 0) {
+      gfx.stroke({ color: colorToNumber(node.stroke.color), width: node.stroke.width });
+    }
+  }
+
+  destroy(gfx: Graphics): void {
+    gfx.destroy();
+  }
 }

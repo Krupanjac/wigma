@@ -93,7 +93,7 @@ export abstract class BaseNode {
 
   // ── Visual properties ──
   fill: FillStyle = { color: { ...Colors.WHITE }, visible: true };
-  stroke: StrokeStyle = { color: { ...Colors.BLACK }, width: 0, visible: false };
+  stroke: StrokeStyle = { color: { ...Colors.BLACK }, width: 1, visible: true };
   opacity: number = 1;
   visible: boolean = true;
   locked: boolean = false;

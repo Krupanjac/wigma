@@ -1,28 +1,33 @@
+import { Graphics } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
 import { RectangleNode } from '../../scene-graph/rectangle-node';
 import { colorToNumber } from '@shared/utils/color-utils';
 
-/**
- * Renderer for RectangleNode using PixiJS Graphics.
- */
-export class RectangleRenderer extends BaseRenderer<unknown> {
+export class RectangleRenderer extends BaseRenderer<Graphics> {
   readonly nodeType: NodeType = 'rectangle';
 
-  create(_node: BaseNode): unknown {
-    // Will be replaced with actual PixiJS Graphics from pool
-    return {};
+  create(_node: BaseNode): Graphics {
+    return new Graphics();
   }
 
-  sync(node: BaseNode, _displayObject: unknown): void {
+  sync(node: BaseNode, gfx: Graphics): void {
     const rect = node as RectangleNode;
-    // In full implementation: clear graphics, draw rounded rect,
-    // apply fill/stroke from node properties
-    void rect.cornerRadius;
-    void colorToNumber;
+    gfx.clear();
+    if (rect.cornerRadius > 0) {
+      gfx.roundRect(0, 0, rect.width, rect.height, rect.cornerRadius);
+    } else {
+      gfx.rect(0, 0, rect.width, rect.height);
+    }
+    if (rect.fill.visible) {
+      gfx.fill({ color: colorToNumber(rect.fill.color), alpha: rect.fill.color.a });
+    }
+    if (rect.stroke.visible && rect.stroke.width > 0) {
+      gfx.stroke({ color: colorToNumber(rect.stroke.color), width: rect.stroke.width });
+    }
   }
 
-  destroy(_displayObject: unknown): void {
-    // Return to graphics pool
+  destroy(gfx: Graphics): void {
+    gfx.destroy();
   }
 }

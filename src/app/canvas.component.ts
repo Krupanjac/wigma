@@ -36,8 +36,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     const container = this.containerRef.nativeElement;
 
-    this.ngZone.runOutsideAngular(() => {
-      this.engine!.init(container);
+    this.ngZone.runOutsideAngular(async () => {
+      await this.engine!.init(container);
 
       // Watch for resize
       this.resizeObserver = new ResizeObserver(entries => {

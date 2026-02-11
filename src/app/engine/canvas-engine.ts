@@ -6,6 +6,7 @@ import { RenderManager } from './rendering/render-manager';
 import { InteractionManager } from './interaction/interaction-manager';
 import { HitTester } from './interaction/hit-tester';
 import { SnapEngine } from './interaction/snap-engine';
+import { GroupNode } from './scene-graph/group-node';
 
 /**
  * CanvasEngine — the main entry point for the pure OOP engine layer.
@@ -40,6 +41,12 @@ export class CanvasEngine {
       this.sceneGraph, this.spatialIndex, this.viewport
     );
 
+    // Add default Layer 0
+    const layer0 = new GroupNode('Layer 0');
+    layer0.width = 0;
+    layer0.height = 0;
+    this.sceneGraph.addNode(layer0);
+
     // Wire scene events to spatial index
     this.sceneGraph.on(event => {
       switch (event.type) {
@@ -64,7 +71,9 @@ export class CanvasEngine {
    * Initialize the engine and attach to a container element.
    * Should be called inside NgZone.runOutsideAngular().
    */
-  init(container: HTMLElement): void {
+  async init(container: HTMLElement): Promise<void> {
+    await this.renderManager.init(container);
+
     this.interaction.attach(container);
     this.viewport.resize(container.clientWidth, container.clientHeight);
 

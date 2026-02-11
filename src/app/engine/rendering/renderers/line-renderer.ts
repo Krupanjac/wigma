@@ -1,10 +1,25 @@
+import { Graphics } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
+import { LineNode } from '../../scene-graph/line-node';
+import { colorToNumber } from '@shared/utils/color-utils';
 
-/** Renderer for LineNode. */
-export class LineRenderer extends BaseRenderer<unknown> {
+export class LineRenderer extends BaseRenderer<Graphics> {
   readonly nodeType: NodeType = 'line';
-  create(_node: BaseNode): unknown { return {}; }
-  sync(_node: BaseNode, _displayObject: unknown): void { /* PixiJS line draw */ }
-  destroy(_displayObject: unknown): void { /* Return to pool */ }
+
+  create(_node: BaseNode): Graphics {
+    return new Graphics();
+  }
+
+  sync(node: BaseNode, gfx: Graphics): void {
+    const line = node as LineNode;
+    gfx.clear();
+    gfx.moveTo(line.startPoint.x, line.startPoint.y);
+    gfx.lineTo(line.endPoint.x, line.endPoint.y);
+    gfx.stroke({ color: colorToNumber(line.stroke.color), width: line.stroke.width });
+  }
+
+  destroy(gfx: Graphics): void {
+    gfx.destroy();
+  }
 }
