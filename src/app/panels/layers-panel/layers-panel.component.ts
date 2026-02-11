@@ -5,6 +5,8 @@ interface LayerEntry {
   id: string;
   name: string;
   type: string;
+  kind: 'page' | 'node';
+  depth: number;
 }
 
 /**
@@ -24,7 +26,7 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
 
   @Input() engine: CanvasEngine | null = null;
 
-  /** Flat list of nodes to show (excluding root). */
+  /** Flat list of pages and nodes (excluding root). */
   readonly nodes = signal<LayerEntry[]>([]);
   readonly selectedIds = signal<Set<string>>(new Set());
   private unsubscribe: (() => void) | null = null;
@@ -63,18 +65,47 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
 
   private refreshNodes(): void {
     if (!this.engine) return;
-    const allNodes = this.engine.sceneGraph.getRenderOrder();
-    this.nodes.set(
-      allNodes.map(n => ({ id: n.id, name: n.name, type: n.type }))
-    );
+
+    const entries: LayerEntry[] = [];
+    const pages = this.engine.sceneGraph.root.children.filter(n => n.type === 'group');
+
+    const collect = (parentId: string, depth: number): void => {
+      const parent = this.engine!.sceneGraph.getNode(parentId);
+      if (!parent) return;
+      for (const child of parent.children) {
+        entries.push({
+          id: child.id,
+          name: child.name,
+          type: child.type,
+          kind: 'node',
+          depth,
+        });
+        if (child.children.length > 0) {
+          collect(child.id, depth + 1);
+        }
+      }
+    };
+
+    for (const page of pages) {
+      entries.push({ id: page.id, name: page.name, type: page.type, kind: 'page', depth: 0 });
+      collect(page.id, 1);
+    }
+
+    this.nodes.set(entries);
   }
 
   isSelected(id: string): boolean {
-    return this.selectedIds().has(id);
+    return this.selectedIds().has(id) || this.engine?.activePageId === id;
   }
 
   onLayerClick(id: string, event: MouseEvent): void {
     if (!this.engine) return;
+
+    const entry = this.nodes().find(e => e.id === id);
+    if (entry?.kind === 'page') {
+      this.engine.setActivePage(id);
+      return;
+    }
 
     // Sync with engine selection
     const node = this.engine.sceneGraph.getNode(id);

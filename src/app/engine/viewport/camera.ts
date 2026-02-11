@@ -21,6 +21,9 @@ export class Camera {
   private _screenWidth: number = 1;
   private _screenHeight: number = 1;
 
+  get screenWidth(): number { return this._screenWidth; }
+  get screenHeight(): number { return this._screenHeight; }
+
   get x(): number { return this._x; }
   get y(): number { return this._y; }
   get zoom(): number { return this._zoom; }

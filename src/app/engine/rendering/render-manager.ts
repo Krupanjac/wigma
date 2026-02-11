@@ -1,4 +1,4 @@
-import { Application, Container } from 'pixi.js';
+import { Application, Container, Graphics } from 'pixi.js';
 import { SceneGraphManager } from '../scene-graph/scene-graph-manager';
 import { SpatialIndex } from '../spatial/spatial-index';
 import { ViewportManager } from '../viewport/viewport-manager';
@@ -7,6 +7,9 @@ import { BaseNode } from '../scene-graph/base-node';
 import { SelectionManager } from '../selection/selection-manager';
 import { SelectionOverlay } from './overlays/selection-overlay';
 import { Vec2 } from '@shared/math/vec2';
+import { GuideState } from '../interaction/guide-state';
+import { GuideOverlay } from './overlays/guide-overlay';
+import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_STROKE_WIDTH } from '@shared/constants';
 
 /**
  * RenderManager — creates and owns the PixiJS Application,
@@ -21,12 +24,17 @@ export class RenderManager {
   private unsubscribe: (() => void) | null = null;
 
   private selectionOverlay = new SelectionOverlay();
+  private guideOverlay = new GuideOverlay();
+
+  private singleSelectionGfx = new Graphics();
+  private singleSelectionTargetId: string | null = null;
 
   constructor(
     private sceneGraph: SceneGraphManager,
     private spatialIndex: SpatialIndex,
     private viewport: ViewportManager,
-    private selection: SelectionManager
+    private selection: SelectionManager,
+    private guides: GuideState
   ) {
     this.rendererRegistry = new NodeRendererRegistry();
 
@@ -49,7 +57,7 @@ export class RenderManager {
   async init(container: HTMLElement): Promise<void> {
     this.app = new Application();
     await this.app.init({
-      background: '#f5f5f5',
+      background: DEFAULT_CANVAS_BG,
       resizeTo: container,
       antialias: true,
       autoDensity: true,
@@ -64,8 +72,9 @@ export class RenderManager {
 
     // Overlays in screen-space (on top of world)
     this.selectionOverlay.attach(this.app.stage);
+    this.guideOverlay.attach(this.app.stage);
 
-    // Sync any nodes added before init (e.g. Layer 0)
+    // Sync any nodes added before init (e.g. default page)
     this.syncExistingNodes();
   }
 
@@ -107,8 +116,14 @@ export class RenderManager {
       node.clearDirtyFlags();
     }
 
-    // Selection overlay (screen-space)
+    // Single-selection overlay (parented to node)
+    this.updateSingleSelectionOverlay();
+
+    // Multi-selection overlay (screen-space)
     this.updateSelectionOverlay();
+
+    // Guide overlay (screen-space)
+    this.updateGuideOverlay();
 
     return true;
   }
@@ -116,6 +131,12 @@ export class RenderManager {
   private updateSelectionOverlay(): void {
     if (!this.app) return;
     const cam = this.viewport.camera;
+
+    if (this.selection.count === 1) {
+      // Prefer the node-parented overlay for single selection
+      this.selectionOverlay.hide();
+      return;
+    }
 
     if (!this.selection.hasSelection) {
       this.selectionOverlay.hide();
@@ -139,6 +160,106 @@ export class RenderManager {
       Math.max(topLeft.y, bottomRight.y),
       cam.zoom
     );
+  }
+
+  private updateSingleSelectionOverlay(): void {
+    const cam = this.viewport.camera;
+
+    if (this.selection.count !== 1) {
+      this.detachSingleSelection();
+      return;
+    }
+
+    const node = this.selection.selectedNodes[0];
+    const displayObj = this.displayObjects.get(node.id);
+    if (!displayObj) {
+      this.detachSingleSelection();
+      return;
+    }
+
+    if (this.singleSelectionTargetId !== node.id) {
+      this.detachSingleSelection();
+      displayObj.addChild(this.singleSelectionGfx);
+      this.singleSelectionTargetId = node.id;
+    }
+
+    const lb = node.computeLocalBounds();
+    const w = lb.width;
+    const h = lb.height;
+    if (w <= 0 || h <= 0) {
+      this.singleSelectionGfx.clear();
+      return;
+    }
+
+    // Keep stroke + handles approximately constant in screen-space
+    const sx = Math.max(1e-6, Math.abs(node.scaleX));
+    const sy = Math.max(1e-6, Math.abs(node.scaleY));
+    const strokeW = SELECTION_STROKE_WIDTH / (cam.zoom * Math.max(sx, sy));
+    const handleW = HANDLE_SIZE / (cam.zoom * sx);
+    const handleH = HANDLE_SIZE / (cam.zoom * sy);
+    const handleHalfW = handleW / 2;
+    const handleHalfH = handleH / 2;
+    const rotDist = ROTATION_HANDLE_DISTANCE / (cam.zoom * sy);
+    const rotRadius = Math.min(handleW, handleH) / 2;
+
+    const minX = lb.minX;
+    const minY = lb.minY;
+    const maxX = lb.maxX;
+    const maxY = lb.maxY;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+
+    this.singleSelectionGfx.clear();
+
+    // Outline
+    this.singleSelectionGfx.rect(minX, minY, w, h);
+    this.singleSelectionGfx.stroke({ color: SELECTION_COLOR, width: strokeW });
+
+    // Handles
+    const handlePoints: Array<[number, number]> = [
+      [minX, minY],
+      [cx, minY],
+      [maxX, minY],
+      [minX, cy],
+      [maxX, cy],
+      [minX, maxY],
+      [cx, maxY],
+      [maxX, maxY],
+    ];
+
+    for (const [hx, hy] of handlePoints) {
+      this.singleSelectionGfx.rect(hx - handleHalfW, hy - handleHalfH, handleW, handleH);
+      this.singleSelectionGfx.fill({ color: HANDLE_FILL, alpha: 1 });
+      this.singleSelectionGfx.stroke({ color: HANDLE_STROKE, width: strokeW });
+    }
+
+    // Rotation handle
+    const rotX = cx;
+    const rotY = minY - rotDist;
+    this.singleSelectionGfx.moveTo(cx, minY);
+    this.singleSelectionGfx.lineTo(rotX, rotY);
+    this.singleSelectionGfx.stroke({ color: SELECTION_COLOR, width: strokeW });
+    this.singleSelectionGfx.circle(rotX, rotY, rotRadius);
+    this.singleSelectionGfx.fill({ color: HANDLE_FILL, alpha: 1 });
+    this.singleSelectionGfx.stroke({ color: HANDLE_STROKE, width: strokeW });
+  }
+
+  private detachSingleSelection(): void {
+    if (this.singleSelectionTargetId) {
+      const prev = this.displayObjects.get(this.singleSelectionTargetId);
+      if (prev) {
+        prev.removeChild(this.singleSelectionGfx);
+      }
+    }
+    this.singleSelectionGfx.clear();
+    this.singleSelectionTargetId = null;
+  }
+
+  private updateGuideOverlay(): void {
+    if (!this.app) return;
+    const cam = this.viewport.camera;
+    this.guideOverlay.setGuides(this.guides.guides);
+    this.guideOverlay.update(cam);
   }
 
   // ── private helpers ───────────────────────────────────────
@@ -197,7 +318,10 @@ export class RenderManager {
       obj.destroy();
     }
     this.displayObjects.clear();
+    this.detachSingleSelection();
+    this.singleSelectionGfx.destroy();
     this.selectionOverlay.dispose();
+    this.guideOverlay.dispose();
     this.app?.destroy(true);
     this.app = null;
   }

@@ -8,7 +8,7 @@ import { Bounds, MutableBounds } from '@shared/math/bounds';
  * Hit-testing: recurse children, deepest hit wins. O(c).
  */
 export class GroupNode extends BaseNode {
-  /** Whether the group is expanded in the layers panel. */
+  /** Whether the group is expanded in the pages panel. */
   expanded: boolean = true;
 
   constructor(name?: string) {

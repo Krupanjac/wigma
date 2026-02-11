@@ -24,7 +24,7 @@ export class PolygonTool extends BaseTool {
     this.currentNode.y = e.worldPosition.y;
     this.currentNode.width = 0;
     this.currentNode.height = 0;
-    this.engine.sceneGraph.addNode(this.currentNode);
+    this.engine.sceneGraph.addNode(this.currentNode, this.engine.activePage ?? undefined);
   }
 
   override onPointerMove(e: PointerEventData): void {

@@ -30,7 +30,7 @@ export class PenTool extends BaseTool {
     if (!this.currentPath) {
       // Start new path
       this.currentPath = new PathNode();
-      this.engine.sceneGraph.addNode(this.currentPath);
+      this.engine.sceneGraph.addNode(this.currentPath, this.engine.activePage ?? undefined);
     } else if (this.currentPath.anchors.length > 0) {
       // Check if closing the path (clicking near first anchor)
       const first = this.currentPath.anchors[0].position;
@@ -65,6 +65,7 @@ export class PenTool extends BaseTool {
 
     this.currentPath.markRenderDirty();
     this.currentPath.markBoundsDirty();
+    this.engine.sceneGraph.notifyNodeChanged(this.currentPath);
   }
 
   override onPointerUp(_event: PointerEventData): void {
@@ -83,6 +84,7 @@ export class PenTool extends BaseTool {
         this.engine.sceneGraph.removeNode(this.currentPath);
       } else {
         this.engine.selection.select(this.currentPath);
+        this.engine.sceneGraph.notifyNodeChanged(this.currentPath);
       }
     }
     this.currentPath = null;

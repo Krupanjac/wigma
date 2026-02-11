@@ -22,7 +22,7 @@ export class LineTool extends BaseTool {
     this.currentNode = new LineNode();
     this.currentNode.startPoint = e.worldPosition;
     this.currentNode.endPoint = e.worldPosition;
-    this.engine.sceneGraph.addNode(this.currentNode);
+    this.engine.sceneGraph.addNode(this.currentNode, this.engine.activePage ?? undefined);
   }
 
   override onPointerMove(e: PointerEventData): void {

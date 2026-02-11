@@ -28,6 +28,25 @@ export class SelectionManager {
     }
   }
 
+  /**
+   * Mark selection bounds dirty without changing the selection set.
+   * Useful when selected nodes move/resize.
+   */
+  invalidateBounds(): void {
+    this._boundsDirty = true;
+  }
+
+  /**
+   * Notify listeners that the selection's geometry changed (move/resize),
+   * even if the selected IDs did not change.
+   */
+  notifyUpdated(): void {
+    this._boundsDirty = true;
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
   /** Select a single node (replaces current selection). */
   select(node: BaseNode): void {
     this.selectedIds.clear();

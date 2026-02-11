@@ -7,6 +7,8 @@ import { InteractionManager } from './interaction/interaction-manager';
 import { HitTester } from './interaction/hit-tester';
 import { SnapEngine } from './interaction/snap-engine';
 import { GroupNode } from './scene-graph/group-node';
+import { AlignmentIndex } from './interaction/alignment-index';
+import { GuideState } from './interaction/guide-state';
 
 /**
  * CanvasEngine — the main entry point for the pure OOP engine layer.
@@ -26,6 +28,13 @@ export class CanvasEngine {
   readonly hitTester: HitTester;
   readonly snapEngine: SnapEngine;
 
+  /** Active page (root child group) where newly created nodes go. */
+  activePageId: string | null = null;
+
+  /** Hashmap-based alignment lookup + currently active guides. */
+  readonly alignmentIndex: AlignmentIndex;
+  readonly guides: GuideState;
+
   private running: boolean = false;
   private animationFrameId: number = 0;
 
@@ -35,36 +44,72 @@ export class CanvasEngine {
     this.viewport = new ViewportManager();
     this.selection = new SelectionManager();
     this.snapEngine = new SnapEngine();
+    this.alignmentIndex = new AlignmentIndex();
+    this.guides = new GuideState();
     this.interaction = new InteractionManager(this.viewport);
     this.hitTester = new HitTester(this.sceneGraph, this.spatialIndex);
     this.renderManager = new RenderManager(
-      this.sceneGraph, this.spatialIndex, this.viewport, this.selection
+      this.sceneGraph, this.spatialIndex, this.viewport, this.selection, this.guides
     );
 
-    // Add default Layer 0
-    const layer0 = new GroupNode('Layer 0');
-    layer0.width = 0;
-    layer0.height = 0;
-    this.sceneGraph.addNode(layer0);
+    // Add default Page 1
+    const page1 = new GroupNode('Page 1');
+    page1.width = 0;
+    page1.height = 0;
+    this.sceneGraph.addNode(page1);
+    this.activePageId = page1.id;
 
-    // Wire scene events to spatial index
+    // Wire scene events to spatial index + alignment index
     this.sceneGraph.on(event => {
       switch (event.type) {
         case 'node-added':
           if (event.node !== this.sceneGraph.root) {
             this.spatialIndex.insert(event.node.id, event.node.worldBounds);
+
+            // Index for alignment if it's not a top-level page
+            if (event.node.parent !== this.sceneGraph.root) {
+              this.alignmentIndex.upsertNode(event.node);
+            }
           }
           break;
         case 'node-removed':
           this.spatialIndex.remove(event.node.id);
+          this.alignmentIndex.removeNode(event.node.id);
+          if (this.selection.isSelected(event.node.id)) {
+            this.selection.removeFromSelection(event.node);
+          }
           break;
         case 'node-changed':
           if (event.node.dirty.bounds) {
             this.spatialIndex.update(event.node.id, event.node.worldBounds);
+
+            if (event.node.parent !== this.sceneGraph.root) {
+              this.alignmentIndex.upsertNode(event.node);
+            }
+          }
+
+          if (this.selection.isSelected(event.node.id)) {
+            this.selection.notifyUpdated();
           }
           break;
       }
     });
+  }
+
+  get activePage(): GroupNode | null {
+    if (!this.activePageId) return null;
+    const node = this.sceneGraph.getNode(this.activePageId);
+    if (!node || node.type !== 'group') return null;
+    // Only root children are treated as pages
+    if (node.parent !== this.sceneGraph.root) return null;
+    return node as GroupNode;
+  }
+
+  setActivePage(id: string): void {
+    const node = this.sceneGraph.getNode(id);
+    if (!node || node.type !== 'group') return;
+    if (node.parent !== this.sceneGraph.root) return;
+    this.activePageId = id;
   }
 
   /**
