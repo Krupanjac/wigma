@@ -44,6 +44,7 @@ export class HitTester {
       const node = this.sceneGraph.getNode(id);
       if (!node || !node.visible || node.locked) continue;
       if (node === this.sceneGraph.root) continue;
+      if (node.parent === this.sceneGraph.root) continue; // skip pages
       if (!this.isNodeInActivePage(node)) continue;
 
       if (this.narrowPhaseTest(node, worldPos, tolerance)) {
@@ -69,6 +70,7 @@ export class HitTester {
       const node = this.sceneGraph.getNode(id);
       if (!node || !node.visible) continue;
       if (node === this.sceneGraph.root) continue;
+      if (node.parent === this.sceneGraph.root) continue; // skip pages
       if (!this.isNodeInActivePage(node)) continue;
 
       if (this.narrowPhaseTest(node, worldPos, tolerance)) {

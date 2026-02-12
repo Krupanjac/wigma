@@ -37,6 +37,7 @@ export class CanvasEngine {
   readonly guides: GuideState;
 
   private activePageNodeIds = new Set<string>();
+  private autoPageSelectionSuspendCount = 0;
 
   private running: boolean = false;
   private animationFrameId: number = 0;
@@ -63,6 +64,7 @@ export class CanvasEngine {
     this.sceneGraph.addNode(page1);
     this.activePageId = page1.id;
     this.rebuildActivePageNodeIds();
+    this.ensureActivePageSelected();
 
     // Wire scene events to spatial index + alignment index
     this.sceneGraph.on(event => {
@@ -98,19 +100,45 @@ export class CanvasEngine {
           }
           break;
         case 'hierarchy-changed':
-          this.rebuildActivePageNodeIds();
+          if (this.autoPageSelectionSuspendCount === 0) {
+            this.ensureActivePageSelected();
+            this.rebuildActivePageNodeIds();
+          }
           break;
       }
     });
   }
 
+  runWithoutAutoPageSelection<T>(operation: () => T): T {
+    this.autoPageSelectionSuspendCount++;
+    try {
+      return operation();
+    } finally {
+      this.autoPageSelectionSuspendCount = Math.max(0, this.autoPageSelectionSuspendCount - 1);
+      if (this.autoPageSelectionSuspendCount === 0) {
+        this.ensureActivePageSelected();
+        this.rebuildActivePageNodeIds();
+      }
+    }
+  }
+
   get activePage(): GroupNode | null {
+    if (this.activePageId) {
+      const node = this.sceneGraph.getNode(this.activePageId);
+      if (node && node.type === 'group' && node.parent === this.sceneGraph.root) {
+        return node as GroupNode;
+      }
+    }
+
+    this.ensureActivePageSelected();
+
     if (!this.activePageId) return null;
-    const node = this.sceneGraph.getNode(this.activePageId);
-    if (!node || node.type !== 'group') return null;
-    // Only root children are treated as pages
-    if (node.parent !== this.sceneGraph.root) return null;
-    return node as GroupNode;
+    const ensured = this.sceneGraph.getNode(this.activePageId);
+    if (!ensured || ensured.type !== 'group' || ensured.parent !== this.sceneGraph.root) {
+      return null;
+    }
+
+    return ensured as GroupNode;
   }
 
   setActivePage(id: string): void {
@@ -128,20 +156,52 @@ export class CanvasEngine {
     return this.activePageNodeIds.has(node.id);
   }
 
+  /** True if the node is a top-level page (direct child of root). */
+  isPageNode(node: BaseNode): boolean {
+    return node.parent === this.sceneGraph.root;
+  }
+
   private rebuildActivePageNodeIds(): void {
     this.activePageNodeIds.clear();
 
     const active = this.activePage;
     if (!active) return;
 
-    const stack: BaseNode[] = [active];
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      this.activePageNodeIds.add(current.id);
-      for (const child of current.children) {
-        stack.push(child);
+    // Only add descendants — the page itself must NOT be in the set
+    // so it stays non-hittable, non-selectable, non-renderable on the canvas.
+    for (const child of active.children) {
+      const stack: BaseNode[] = [child];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        this.activePageNodeIds.add(current.id);
+        for (const c of current.children) {
+          stack.push(c);
+        }
       }
     }
+  }
+
+  private ensureActivePageSelected(): void {
+    if (this.activePageId) {
+      const current = this.sceneGraph.getNode(this.activePageId);
+      if (current && current.type === 'group' && current.parent === this.sceneGraph.root) {
+        return;
+      }
+    }
+
+    const firstPage = this.sceneGraph.root.children.find(n => n.type === 'group');
+    if (firstPage) {
+      this.activePageId = firstPage.id;
+      this.rebuildActivePageNodeIds();
+      return;
+    }
+
+    const page = new GroupNode('Page 1');
+    page.width = 0;
+    page.height = 0;
+    this.sceneGraph.addNode(page);
+    this.activePageId = page.id;
+    this.rebuildActivePageNodeIds();
   }
 
   /**

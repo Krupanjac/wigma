@@ -16,6 +16,20 @@ import { TextNode } from '../../engine/scene-graph/text-node';
 import { ImageNode } from '../../engine/scene-graph/image-node';
 import { PathNode, AnchorType, PathAnchor } from '../../engine/scene-graph/path-node';
 import { Vec2 } from '../../shared/math/vec2';
+import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
+
+/* ── Diagnostic logging helper ─────────────────────────────── */
+const LOG_PREFIX = '[Wigma Persist]';
+function plog(...args: unknown[]): void {
+  console.warn(LOG_PREFIX, ...args);
+}
+function countNodesDeep(nodes: SceneNodeModel[]): number {
+  let c = 0;
+  for (const n of nodes) {
+    c += 1 + countNodesDeep(n.children ?? []);
+  }
+  return c;
+}
 
 /**
  * ProjectService — manages project/document state.
@@ -34,6 +48,7 @@ export class ProjectService {
   private unsubscribeScene: (() => void) | null = null;
   private persistQueued = false;
   private suspendPersistence = false;
+  private sessionActivated = false;
 
   private _document = signal<DocumentModel>({
     id: uid(),
@@ -57,15 +72,53 @@ export class ProjectService {
 
   init(engine: CanvasEngine): void {
     this.engine = engine;
+    plog('init — engine attached');
 
     this.unsubscribeScene?.();
-    this.unsubscribeScene = this.engine.sceneGraph.on(() => {
-      this.schedulePersist();
+    this.unsubscribeScene = this.engine.sceneGraph.on(event => {
+      this.onSceneEvent(event);
     });
 
-    if (!this.restoreFromBrowser()) {
-      this.newProject('Untitled', false);
+    // Expose a global debug helper on window
+    (globalThis as Record<string, unknown>)['__wigmaDebug'] = () => this.debugDump();
+
+    const restored = this.restoreFromBrowser();
+    plog('init — restored from browser:', restored);
+    if (!restored) {
+      this.newProject('Untitled', false, false);
     }
+  }
+
+  /** Dump current state to console for debugging. */
+  debugDump(): void {
+    const doc = this._document();
+    const rootChildren = this.engine?.sceneGraph.root.children ?? [];
+    const activePageId = this.engine?.activePageId;
+    console.group(`${LOG_PREFIX} Debug Dump`);
+    console.log('sessionActivated:', this.sessionActivated);
+    console.log('suspendPersistence:', this.suspendPersistence);
+    console.log('engine present:', !!this.engine);
+    console.log('document.nodes.length:', doc.nodes.length);
+    console.log('document total node count:', countNodesDeep(doc.nodes));
+    console.log('engine root.children.length:', rootChildren.length);
+    console.log('engine activePageId:', activePageId);
+    for (const page of rootChildren) {
+      console.log(`  page "${page.name}" id=${page.id} children=${page.children.length}`);
+      for (const child of page.children) {
+        console.log(`    └─ ${child.type} "${child.name}" id=${child.id} pos=(${child.x},${child.y}) size=${child.width}×${child.height}`);
+      }
+    }
+    const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
+    if (raw) {
+      try {
+        const stored = JSON.parse(raw) as DocumentModel;
+        console.log('localStorage nodes.length:', stored.nodes?.length ?? 'MISSING');
+        console.log('localStorage total node count:', countNodesDeep(stored.nodes ?? []));
+      } catch { console.log('localStorage: INVALID JSON'); }
+    } else {
+      console.log('localStorage: EMPTY');
+    }
+    console.groupEnd();
   }
 
   rename(name: string): void {
@@ -91,16 +144,37 @@ export class ProjectService {
   /** Export current document as JSON. */
   toJSON(): string {
     this.refreshDocumentFromEngine();
-    return JSON.stringify(this._document(), null, 2);
+    const doc = this._document();
+    plog('toJSON — pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
+    return JSON.stringify(doc, null, 2);
   }
 
   /** Load a project from JSON. */
   fromJSON(json: string): void {
-    const doc = JSON.parse(json) as DocumentModel;
-    this.loadDocument(doc, false);
+    plog('fromJSON — input length:', json.length);
+    let doc: DocumentModel;
+    try {
+      doc = JSON.parse(json) as DocumentModel;
+    } catch (e) {
+      console.error(LOG_PREFIX, 'fromJSON — JSON parse error:', e);
+      alert('Import failed: the file does not contain valid JSON.');
+      return;
+    }
+    if (!doc || typeof doc !== 'object') {
+      console.error(LOG_PREFIX, 'fromJSON — parsed value is not an object');
+      alert('Import failed: unexpected file format.');
+      return;
+    }
+    // Ensure nodes array exists
+    if (!Array.isArray(doc.nodes)) {
+      plog('fromJSON — doc.nodes is not an array, defaulting to empty');
+      doc.nodes = [];
+    }
+    plog('fromJSON — parsed doc pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
+    this.loadDocument(doc, false, true);
   }
 
-  newProject(name: string = 'Untitled', markDirty: boolean = true): void {
+  newProject(name: string = 'Untitled', markDirty: boolean = true, persist: boolean = true): void {
     const doc: DocumentModel = {
       id: uid(),
       name,
@@ -137,21 +211,32 @@ export class ProjectService {
       ],
     };
 
-    this.loadDocument(doc, markDirty);
+    this.loadDocument(doc, markDirty, persist);
   }
 
   saveToBrowser(): void {
     this.refreshDocumentFromEngine();
+    this.sessionActivated = true;
+    const doc = this._document();
+    plog('saveToBrowser — pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
     this.writeBrowserSnapshot();
     this._isDirty.set(false);
   }
 
   restoreFromBrowser(): boolean {
     const raw = this.readBrowserSnapshot();
-    if (!raw) return false;
+    if (!raw) {
+      plog('restoreFromBrowser — no data in localStorage');
+      return false;
+    }
 
     try {
       const parsed = JSON.parse(raw) as Partial<DocumentModel>;
+      if (!parsed || typeof parsed !== 'object') {
+        plog('restoreFromBrowser — parsed data is not an object');
+        return false;
+      }
+      const nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
       const doc: DocumentModel = {
         id: parsed.id ?? uid(),
         name: parsed.name ?? 'Untitled',
@@ -160,74 +245,177 @@ export class ProjectService {
         createdAt: parsed.createdAt ?? new Date().toISOString(),
         updatedAt: parsed.updatedAt ?? new Date().toISOString(),
         canvas: parsed.canvas ?? { width: 1920, height: 1080, backgroundColor: 0x09090b },
-        nodes: parsed.nodes ?? [],
+        nodes,
       };
-      this.loadDocument(doc, false);
+      plog('restoreFromBrowser — parsed. pages:', nodes.length, 'total nodes:', countNodesDeep(nodes));
+      this.loadDocument(doc, false, true);
       return true;
-    } catch {
+    } catch (e) {
+      console.error(LOG_PREFIX, 'restoreFromBrowser — error:', e);
       return false;
     }
   }
 
   private schedulePersist(): void {
     if (this.suspendPersistence) return;
+    if (!this.sessionActivated) return;
     if (this.persistQueued) return;
     this.persistQueued = true;
 
     queueMicrotask(() => {
       this.persistQueued = false;
+      if (this.suspendPersistence) return; // re-check after microtask
       this.refreshDocumentFromEngine();
       this.writeBrowserSnapshot();
       this._isDirty.set(true);
     });
   }
 
+  private persistImmediately(markDirty: boolean): void {
+    if (this.suspendPersistence) return;
+    if (!this.sessionActivated) return;
+    this.refreshDocumentFromEngine();
+    this.writeBrowserSnapshot();
+    if (markDirty) this._isDirty.set(true);
+  }
+
   private refreshDocumentFromEngine(): void {
-    if (!this.engine) return;
+    if (!this.engine) {
+      plog('refreshDocumentFromEngine — no engine, skipping');
+      return;
+    }
 
     const prev = this._document();
-    const pages = this.engine.sceneGraph.root.children
-      .filter(n => n.type === 'group')
-      .map(p => this.serializeNode(p));
+    const pages: SceneNodeModel[] = [];
+    const rootChildren = this.engine.sceneGraph.root.children;
+    plog('refreshDocumentFromEngine — root.children count:', rootChildren.length);
+
+    for (const page of rootChildren) {
+      if (page.type !== 'group') {
+        plog('  skipping non-group root child:', page.type, page.name);
+        continue;
+      }
+      try {
+        const serialized = this.serializeNode(page);
+        plog('  serialized page', page.name, '— children:', serialized.children.length);
+        pages.push(serialized);
+      } catch (e) {
+        console.error(LOG_PREFIX, '  serializeNode error for page', page.name, e);
+      }
+    }
 
     this._document.set({
       ...prev,
       updatedAt: new Date().toISOString(),
       nodes: pages,
     });
+    plog('refreshDocumentFromEngine — total pages:', pages.length, 'total nodes:', countNodesDeep(pages));
   }
 
-  private loadDocument(doc: DocumentModel, markDirty: boolean): void {
-    if (!this.engine) return;
+  private loadDocument(doc: DocumentModel, markDirty: boolean, persist: boolean): void {
+    if (!this.engine) {
+      plog('loadDocument — no engine, aborting');
+      return;
+    }
+
+    // Ensure nodes is always an array
+    const docNodes = Array.isArray(doc.nodes) ? doc.nodes : [];
+    plog('loadDocument — input pages:', docNodes.length, 'total nodes:', countNodesDeep(docNodes), 'persist:', persist);
 
     this.suspendPersistence = true;
-    this.engine.selection.clearSelection();
-    this.engine.guides.clear();
-    this.engine.sceneGraph.clear();
+    try {
+      this.engine.runWithoutAutoPageSelection(() => {
+        this.engine!.selection.clearSelection();
+        this.engine!.guides.clear();
+        this.engine!.sceneGraph.clear();
 
-    const idMap = new Map<string, string>();
-    const pages = doc.nodes.filter(n => n.type === 'group');
-    const targetPages = pages.length > 0 ? pages : [this.createFallbackPageNode()];
+        const idMap = new Map<string, string>();
+        const pages = docNodes.filter(n => n.type === 'group');
+        const targetPages = pages.length > 0 ? pages : [this.createFallbackPageNode()];
 
-    for (const pageModel of targetPages) {
-      const page = this.deserializeNode(pageModel, idMap);
-      this.engine.sceneGraph.addNode(page);
+        plog('loadDocument — deserializing', targetPages.length, 'pages');
+        for (const pageModel of targetPages) {
+          try {
+            const page = this.deserializeNode(pageModel, idMap);
+            plog('  deserialized page', page.name, 'children:', page.children.length);
+            this.engine!.sceneGraph.addNode(page);
+          } catch (e) {
+            console.error(LOG_PREFIX, '  deserializeNode error for page', pageModel.name, e);
+          }
+        }
+
+        const firstPageId = this.engine!.sceneGraph.root.children[0]?.id;
+        plog('loadDocument — setting active page:', firstPageId);
+        if (firstPageId) {
+          this.engine!.setActivePage(firstPageId);
+        }
+      });
+
+      // Verify engine state
+      const root = this.engine.sceneGraph.root;
+      plog('loadDocument — after load: root.children:', root.children.length,
+           'activePageId:', this.engine.activePageId);
+      for (const page of root.children) {
+        plog('  engine page', page.name, 'id:', page.id, 'children:', page.children.length);
+      }
+
+      // Sync document signal from engine's actual state (correct IDs)
+      this.refreshDocumentFromEngine();
+
+      // Update metadata from the loaded document
+      const refreshed = this._document();
+      this._document.set({
+        ...refreshed,
+        id: doc.id ?? refreshed.id,
+        name: doc.name ?? refreshed.name,
+        description: doc.description ?? '',
+        version: doc.version ?? refreshed.version,
+        createdAt: doc.createdAt ?? refreshed.createdAt,
+      });
+
+      this.history.clear();
+      this._isDirty.set(markDirty);
+      this.sessionActivated = persist;
+      if (persist) {
+        this.writeBrowserSnapshot();
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, 'loadDocument — CRITICAL ERROR:', e);
+    } finally {
+      this.suspendPersistence = false;
     }
+  }
 
-    const firstPageId = this.engine.sceneGraph.root.children[0]?.id;
-    if (firstPageId) {
-      this.engine.setActivePage(firstPageId);
+  private onSceneEvent(event: SceneEvent): void {
+    try {
+      if (this.suspendPersistence) return;
+
+      if (!this.sessionActivated && event.type === 'node-added') {
+        const isPage = event.node.parent === this.engine?.sceneGraph.root;
+        if (!isPage) {
+          plog('session activated by first non-page node-added:', event.node.type, event.node.name);
+          this.sessionActivated = true;
+          this.persistImmediately(true);
+        }
+        return;
+      }
+
+      if (event.type === 'node-added') {
+        this.persistImmediately(true);
+        return;
+      }
+
+      if (
+        event.type === 'node-removed' ||
+        event.type === 'node-changed' ||
+        event.type === 'hierarchy-changed' ||
+        event.type === 'node-reordered'
+      ) {
+        this.schedulePersist();
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, 'onSceneEvent error:', e);
     }
-
-    this._document.set({
-      ...doc,
-      description: doc.description ?? '',
-      updatedAt: new Date().toISOString(),
-    });
-    this.history.clear();
-    this._isDirty.set(markDirty);
-    this.writeBrowserSnapshot();
-    this.suspendPersistence = false;
   }
 
   private createFallbackPageNode(): SceneNodeModel {
@@ -439,16 +627,23 @@ export class ProjectService {
 
   private writeBrowserSnapshot(): void {
     try {
-      localStorage.setItem(ProjectService.STORAGE_KEY, JSON.stringify(this._document()));
-    } catch {
-      // no-op (storage may be blocked/full)
+      const doc = this._document();
+      const json = JSON.stringify(doc);
+      localStorage.setItem(ProjectService.STORAGE_KEY, json);
+      plog('writeBrowserSnapshot — wrote', json.length, 'bytes, pages:', doc.nodes.length,
+           'total nodes:', countNodesDeep(doc.nodes));
+    } catch (e) {
+      console.error(LOG_PREFIX, 'writeBrowserSnapshot error:', e);
     }
   }
 
   private readBrowserSnapshot(): string | null {
     try {
-      return localStorage.getItem(ProjectService.STORAGE_KEY);
-    } catch {
+      const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
+      plog('readBrowserSnapshot —', raw ? `found ${raw.length} bytes` : 'empty');
+      return raw;
+    } catch (e) {
+      console.error(LOG_PREFIX, 'readBrowserSnapshot error:', e);
       return null;
     }
   }

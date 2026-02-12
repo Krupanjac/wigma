@@ -372,11 +372,14 @@ export class RenderManager {
   // ── private helpers ───────────────────────────────────────
 
   private syncExistingNodes(): void {
+    let syncedCount = 0;
     for (const node of this.sceneGraph.getRenderOrder()) {
       if (!this.displayObjects.has(node.id)) {
         this.onNodeAdded(node);
+        syncedCount++;
       }
     }
+    console.warn('[Wigma Render] syncExistingNodes — synced', syncedCount, 'nodes, displayObjects total:', this.displayObjects.size);
   }
 
   private onNodeAdded(node: BaseNode): void {

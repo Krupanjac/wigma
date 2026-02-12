@@ -22,9 +22,14 @@ export class GroupNode extends BaseNode {
       return new Bounds(0, 0, this.width, this.height);
     }
 
+    // Use children's local position + local bounds to avoid the circular
+    // dependency: worldBounds → parent.worldMatrix → composeLocalMatrix → computeLocalBounds.
     const mb = new MutableBounds();
     for (const child of this.children) {
-      mb.unionMut(child.worldBounds);
+      const lb = child.computeLocalBounds();
+      // Offset by child's local position (ignoring rotation/scale for bounding)
+      mb.addPoint(child.x + lb.minX, child.y + lb.minY);
+      mb.addPoint(child.x + lb.maxX, child.y + lb.maxY);
     }
 
     return mb.toImmutable();

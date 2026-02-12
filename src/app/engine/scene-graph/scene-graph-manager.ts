@@ -91,7 +91,7 @@ export class SceneGraphManager {
     }
 
     this.registerNode(node);
-    this.emit({ type: 'node-added', node });
+    this.emitNodeAddedRecursive(node);
     this.emit({ type: 'hierarchy-changed' });
   }
 
@@ -103,8 +103,8 @@ export class SceneGraphManager {
       node.parent.removeChild(node);
     }
 
+    this.emitNodeRemovedRecursive(node);
     this.unregisterNode(node);
-    this.emit({ type: 'node-removed', node });
     this.emit({ type: 'hierarchy-changed' });
   }
 
@@ -164,6 +164,20 @@ export class SceneGraphManager {
     for (const child of node.children) {
       this.unregisterNode(child);
     }
+  }
+
+  private emitNodeAddedRecursive(node: BaseNode): void {
+    this.emit({ type: 'node-added', node });
+    for (const child of node.children) {
+      this.emitNodeAddedRecursive(child);
+    }
+  }
+
+  private emitNodeRemovedRecursive(node: BaseNode): void {
+    for (const child of node.children) {
+      this.emitNodeRemovedRecursive(child);
+    }
+    this.emit({ type: 'node-removed', node });
   }
 
   /** Clear all nodes except root. */
