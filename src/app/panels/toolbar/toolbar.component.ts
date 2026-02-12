@@ -51,6 +51,11 @@ export class ToolbarComponent {
     return this.toolGroups.find(g => g.id === groupId) ?? null;
   }
 
+  groupHasDropdown(groupId: ToolGroupId): boolean {
+    const group = this.groupById(groupId);
+    return !!group && group.tools.length > 1;
+  }
+
   iconLabel(type: ToolType): string {
     switch (type) {
       case 'select': return 'V';
@@ -119,6 +124,11 @@ export class ToolbarComponent {
   toggleGroup(groupId: ToolGroupId, event: PointerEvent): void {
     event.preventDefault();
     event.stopPropagation();
+
+    if (!this.groupHasDropdown(groupId)) {
+      this.openGroupId.set(null);
+      return;
+    }
 
     if (this.openGroupId() === groupId) {
       this.openGroupId.set(null);

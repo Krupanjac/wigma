@@ -35,21 +35,20 @@ export class ToolManagerService {
   private selectTool: SelectTool | null = null;
   private _activeTool = signal<BaseTool | null>(null);
   private _activeToolType = signal<ToolType>('select');
+  private pointerDownToolType: ToolType | null = null;
+  private nodeCreatedDuringPointerInteraction = false;
+
+  private static readonly AUTO_RETURN_TO_MOVE_TOOLS = new Set<ToolType>([
+    'frame', 'section', 'slice',
+    'rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow',
+    'pen', 'pencil', 'text', 'image', 'video', 'comment',
+  ]);
 
   readonly activeTool = computed(() => this._activeTool());
   readonly activeToolType = computed(() => this._activeToolType());
 
-  private shouldAutoReturnToSelect(activeType: ToolType, engine: CanvasEngine): boolean {
-    if (!this.selectTool) return false;
-    if (!['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'text', 'frame', 'section', 'slice', 'image', 'video', 'comment'].includes(activeType)) {
-      return false;
-    }
-
-    const selected = engine.selection.selectedNodes;
-    if (selected.length !== 1) return false;
-
-    const placedType = selected[0].type;
-    return placedType === activeType;
+  private shouldAutoReturnToSelect(activeType: ToolType): boolean {
+    return ToolManagerService.AUTO_RETURN_TO_MOVE_TOOLS.has(activeType);
   }
 
   /** Initialize tools with the engine instance. */
@@ -76,7 +75,17 @@ export class ToolManagerService {
     this.tools.set('zoom', new ZoomTool(engine));
 
     // Wire interaction events to active tool + global transform handles
+    engine.sceneGraph.on(event => {
+      if (event.type !== 'node-added') return;
+      if (!this.pointerDownToolType) return;
+      if (event.node.parent === engine.sceneGraph.root) return;
+      this.nodeCreatedDuringPointerInteraction = true;
+    });
+
     engine.interaction.onPointerDown(e => {
+      this.pointerDownToolType = this._activeToolType();
+      this.nodeCreatedDuringPointerInteraction = false;
+
       const activeType = this._activeToolType();
       if (activeType !== 'select' && this.selectTool?.tryStartTransformInteraction(e)) {
         return;
@@ -96,11 +105,21 @@ export class ToolManagerService {
     engine.interaction.onPointerUp(e => {
       const activeType = this._activeToolType();
       if (activeType !== 'select' && this.selectTool?.handleTransformPointerUp(e)) {
+        this.pointerDownToolType = null;
+        this.nodeCreatedDuringPointerInteraction = false;
         return;
       }
       this._activeTool()?.onPointerUp(e);
 
-      if (activeType !== 'select' && this.shouldAutoReturnToSelect(activeType, engine)) {
+      const shouldReturn =
+        this.pointerDownToolType === activeType &&
+        this.nodeCreatedDuringPointerInteraction &&
+        this.shouldAutoReturnToSelect(activeType);
+
+      this.pointerDownToolType = null;
+      this.nodeCreatedDuringPointerInteraction = false;
+
+      if (activeType !== 'select' && shouldReturn) {
         this.setTool('select');
       }
     });

@@ -8,6 +8,9 @@
     <!-- Canvas always fills the workspace (sidebars overlay it) -->
     <app-canvas class="absolute inset-0" [engine]="engine" />
 
+    <!-- Floating tools dock -->
+    <app-toolbar class="absolute bottom-3 left-1/2 -translate-x-1/2 z-[80]" />
+
     <!-- Pages sidebar overlay (resizable) -->
     <div
       class="absolute inset-y-0 left-0 z-20 overflow-hidden"
@@ -51,10 +54,6 @@
     </div>
   </div>
 
-  <!-- Bottom: Tools Dock -->
-  <div class="shrink-0 border-t border-zinc-800 relative z-[80] overflow-visible">
-    <app-toolbar class="w-full" />
-  </div>
 </div>
 
 <!-- Context Menu (portal, positioned absolutely) -->

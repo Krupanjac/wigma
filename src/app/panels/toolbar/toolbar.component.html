@@ -23,18 +23,20 @@
             </svg>
           </button>
 
-          <button
-            type="button"
-            class="w-6 h-10 flex items-center justify-center border-l border-zinc-700/80 transition-colors text-zinc-400 hover:bg-zinc-700"
-            [class.bg-zinc-700]="openGroupId() === group.id"
-            [class.text-white]="openGroupId() === group.id"
-            [title]="group.label"
-            (pointerdown)="toggleGroup(group.id, $event)"
-          >
-            <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M6 9l6 6 6-6"></path>
-            </svg>
-          </button>
+          @if (group.tools.length > 1) {
+            <button
+              type="button"
+              class="w-6 h-10 flex items-center justify-center border-l border-zinc-700/80 transition-colors text-zinc-400 hover:bg-zinc-700"
+              [class.bg-zinc-700]="openGroupId() === group.id"
+              [class.text-white]="openGroupId() === group.id"
+              [title]="group.label"
+              (pointerdown)="toggleGroup(group.id, $event)"
+            >
+              <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6"></path>
+              </svg>
+            </button>
+          }
         </div>
       </div>
     }
