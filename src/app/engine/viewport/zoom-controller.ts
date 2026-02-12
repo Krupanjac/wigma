@@ -27,6 +27,21 @@ export class ZoomController {
     this.lerpFramesRemaining = ZOOM_LERP_FRAMES;
   }
 
+  /**
+   * Set zoom target anchored to a screen-space point.
+   * Keeps the world point under the anchor fixed during the lerp.
+   */
+  zoomToAt(zoom: number, anchorX: number, anchorY: number): void {
+    this.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+    this.lerpFramesRemaining = ZOOM_LERP_FRAMES;
+
+    this.hasAnchor = true;
+    this.anchorScreenX = anchorX;
+    this.anchorScreenY = anchorY;
+    this.anchorWorldX = (anchorX / this.currentZoom) + this.camera.x;
+    this.anchorWorldY = (anchorY / this.currentZoom) + this.camera.y;
+  }
+
   /** Zoom by delta (scroll wheel). */
   zoomBy(delta: number, anchorX: number, anchorY: number): void {
     const factor = 1 - delta * ZOOM_SPEED;

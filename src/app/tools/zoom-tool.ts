@@ -11,9 +11,15 @@ export class ZoomTool extends BaseTool {
 
   constructor(private engine: CanvasEngine) { super(); }
 
+
+  //Zoom to cursor position on click, zoom out if alt key is held
   override onPointerDown(event: PointerEventData): void {
     const factor = event.altKey ? 0.5 : 2;
     const currentZoom = this.engine.viewport.camera.zoom;
-    this.engine.viewport.zoomController.zoomTo(currentZoom * factor);
+    this.engine.viewport.zoomController.zoomToAt(
+      currentZoom * factor,
+      event.screenPosition.x,
+      event.screenPosition.y
+    );
   }
 }
