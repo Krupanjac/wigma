@@ -47,6 +47,8 @@ Wigma is organized into four strictly layered tiers. Dependencies flow **downwar
 - **Immutable + Mutable variants** — Hot-path math classes (`Vec2`, `Matrix2D`, `Bounds`) have both immutable (safe, allocating) and mutable (zero-alloc, in-place) variants. The engine's inner loops use mutable variants; UI-facing APIs expose immutable ones.
 - **rbush is the sole spatial index** — No quadtree, no grid. The R-tree provides $O(\log n)$ range queries with a well-tuned branching factor ($M = 9$).
 - **Dirty flag propagation** — Nodes carry `transform`, `render`, and `bounds` dirty flags that propagate parent → children. The render pipeline skips frames when nothing is dirty (idle detection).
+- **Center-pivot transforms** — Node transforms compose around local geometric center so rotate/scale handles and render transforms remain consistent.
+- **Anchor-aware scaling** — Scale operations can pin any of 9 anchor positions (`top-left` … `bottom-right`) from the Transform panel.
 
 ---
 
@@ -285,7 +287,24 @@ onActivate() → [onPointerDown → onPointerMove → onPointerUp]* → onDeacti
 
 The `ToolManagerService` (Angular) wraps the OOP tool system and exposes the active tool as a signal for reactive UI updates.
 
-Toolbar groups are organized Figma-style into: Selection, Frame/Section/Slice, Geometry (+ Image/Video), Pen/Pencil, Text, and Comment. The bottom toolbar also includes Draw/Design/Dev mode switching.
+Toolbar groups are organized Figma-style into: Selection, Frame/Section/Slice, Geometry (+ Image/Video), Pen/Pencil, Text, and Comment.
+
+Current grouped-toolbar UX:
+- Split group controls: main icon runs the group's last-used tool, adjacent chevron opens the group menu.
+- Group menus render in a fixed, viewport-anchored overlay above the dock for reliable z-order over canvas.
+- Group icon is dynamic and follows last-selected tool in that group.
+- Draw/Design/Dev mode switch lives in the same centered dock cluster.
+
+Transform/text interaction behavior:
+- Transform handles (resize/rotate) remain available even when non-select tools are active.
+- Resize supports sign inversion when crossing zero (Figma-like flip behavior).
+- Text editing supports on-canvas focused editing overlay plus properties-panel editing.
+- Text resize updates font metrics/box dimensions instead of stretching glyphs via scale distortion.
+- Single-selection dimensions badge (`W`/`H`) is rendered in screen-space below selected object.
+
+Snapping/viewport behavior:
+- Alignment guides are finite reference segments between involved objects (not full-canvas lines).
+- Zoom interactions preserve pointer anchoring for wheel/click zoom.
 
 ---
 
@@ -322,7 +341,7 @@ Available commands:
 | Dirty flag propagation      | Skip unchanged subtrees in transform/render updates      |
 | Idle frame detection        | Skip entire frame when nothing is dirty                  |
 | R-tree viewport culling     | Only render nodes within visible bounds                  |
-| Object pools                | Reuse PixiJS Graphics/Sprite/Container/Text objects      |
+| Object pools                | Reuse PixiJS Graphics/Sprite/Container/Text objects in renderers and overlays |
 | Immutable + mutable math    | Zero-alloc inner loops with MutableVec2/Matrix2D/Bounds  |
 | Adaptive Bézier subdivision | Fewer vertices at low zoom, more at high zoom            |
 | OnPush change detection     | All Angular components use OnPush                        |
