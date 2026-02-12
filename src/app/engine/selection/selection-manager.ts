@@ -92,6 +92,49 @@ export class SelectionManager {
     this.notifyChange();
   }
 
+  /**
+   * Incrementally sync the selection to match a target set of IDs.
+   *
+   * Only adds/removes the delta between the current selection and the
+   * target. Skips notification entirely when nothing changed.
+   *
+   * Much faster than `selectMultiple()` during marquee drag because
+   * most frames only add/remove 0–2 nodes rather than rebuilding the
+   * entire Map and Set from scratch.
+   *
+   * @param targetIds  The desired set of selected node IDs.
+   * @param resolve    Callback to look up a BaseNode by ID (only called
+   *                   for nodes being *added* to the selection).
+   */
+  syncToSet(targetIds: Set<string>, resolve: (id: string) => BaseNode | undefined): void {
+    let changed = false;
+
+    // Remove nodes that are no longer in the target
+    for (const id of this.selectedIds) {
+      if (!targetIds.has(id)) {
+        this.selectedIds.delete(id);
+        this.nodesMap.delete(id);
+        changed = true;
+      }
+    }
+
+    // Add nodes that are new in the target
+    for (const id of targetIds) {
+      if (!this.selectedIds.has(id)) {
+        const node = resolve(id);
+        if (node) {
+          this.selectedIds.add(id);
+          this.nodesMap.set(id, node);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      this.notifyChange();
+    }
+  }
+
   /** Clear selection. */
   clearSelection(): void {
     this.selectedIds.clear();

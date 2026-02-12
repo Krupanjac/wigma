@@ -281,27 +281,9 @@ export class SelectTool extends BaseTool {
       nextIds.add(node.id);
     }
 
-    if (this.sameIdSet(this.marqueePreviewSelectionIds, nextIds)) {
-      return;
-    }
-
+    // Incrementally sync: only add/remove the delta, skip if unchanged
+    this.engine.selection.syncToSet(nextIds, id => this.engine.sceneGraph.getNode(id));
     this.marqueePreviewSelectionIds = nextIds;
-
-    // Build nodes array only when selection actually changed
-    const nextNodes: BaseNode[] = [];
-    for (const id of nextIds) {
-      const node = this.engine.sceneGraph.getNode(id);
-      if (node) nextNodes.push(node);
-    }
-    this.engine.selection.selectMultiple(nextNodes);
-  }
-
-  private sameIdSet(a: Set<string>, b: Set<string>): boolean {
-    if (a.size !== b.size) return false;
-    for (const id of a) {
-      if (!b.has(id)) return false;
-    }
-    return true;
   }
 
   private handleMove(event: PointerEventData): void {
