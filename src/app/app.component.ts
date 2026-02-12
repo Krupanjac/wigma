@@ -1,5 +1,6 @@
 import {
   Component,
+  HostListener,
   OnInit,
   OnDestroy,
   NgZone,
@@ -20,6 +21,8 @@ import { ClipboardService } from './core/services/clipboard.service';
 import { ExportService } from './core/services/export.service';
 import { KeybindingService } from './core/services/keybinding.service';
 import { MenuCommandsService } from './panels/menu-bar/menu-commands.service';
+import { ContextMenuService } from './panels/context-menu/context-menu.service';
+import { Vec2 } from './shared/math/vec2';
 
 @Component({
   selector: 'app-root',
@@ -43,6 +46,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private exportService = inject(ExportService);
   private keybinding = inject(KeybindingService);
   private menuCommands = inject(MenuCommandsService);
+  private contextMenu = inject(ContextMenuService);
 
   engine: CanvasEngine | null = null;
   title = 'wigma';
@@ -78,6 +82,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.clipboard.init(this.engine!);
     this.exportService.init(this.engine!);
     this.menuCommands.init(this.engine!);
+    this.contextMenu.init(this.engine!);
 
     // Register keybindings
     this.keybinding.init();
@@ -205,5 +210,49 @@ export class AppComponent implements OnInit, OnDestroy {
 
     window.removeEventListener('pointermove', this.onResizeMove);
     window.removeEventListener('pointerup', this.onResizeUp);
+  }
+
+  @HostListener('document:contextmenu', ['$event'])
+  onContextMenu(event: MouseEvent): void {
+    if (!this.engine) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    const layerEntry = target.closest('[data-layer-entry="true"]') as HTMLElement | null;
+    if (layerEntry) {
+      event.preventDefault();
+      const id = layerEntry.dataset['layerId'];
+      const kind = layerEntry.dataset['layerKind'];
+      if (!id || !kind) {
+        this.contextMenu.hide();
+        return;
+      }
+      if (kind === 'page') {
+        this.contextMenu.open(event.clientX, event.clientY, { type: 'page', pageId: id });
+      } else {
+        this.contextMenu.open(event.clientX, event.clientY, { type: 'node', nodeId: id });
+      }
+      return;
+    }
+
+    const canvasHost = target.closest('app-canvas') as HTMLElement | null;
+    if (canvasHost) {
+      event.preventDefault();
+
+      const rect = canvasHost.getBoundingClientRect();
+      const screen = new Vec2(event.clientX - rect.left, event.clientY - rect.top);
+      const world = this.engine.viewport.camera.screenToWorld(screen);
+      const hit = this.engine.hitTester.hitTest(world);
+
+      if (!hit && this.engine.selection.selectedNodeIds.length > 0) {
+        this.contextMenu.open(event.clientX, event.clientY, { type: 'selection' });
+      } else {
+        this.contextMenu.open(event.clientX, event.clientY, { type: 'canvas', hitNodeId: hit?.id ?? null });
+      }
+      return;
+    }
+
+    this.contextMenu.hide();
   }
 }

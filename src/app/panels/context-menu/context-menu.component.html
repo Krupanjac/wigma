@@ -1,16 +1,19 @@
-@if (visible()) {
+@if (menu.visible()) {
   <div
     class="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-48 z-[100]"
-    [style.left.px]="position().x"
-    [style.top.px]="position().y"
+    [style.left.px]="menu.position().x"
+    [style.top.px]="menu.position().y"
   >
-    @for (item of items(); track item.label) {
-      @if (item.separator) {
+    @for (item of menu.items(); track item.id) {
+      @if (item.kind === 'separator') {
         <div class="border-t border-zinc-700 my-1"></div>
       } @else {
         <button
           class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white flex items-center justify-between transition-colors"
-          (click)="item.action(); hide()"
+          [disabled]="item.disabled"
+          [class.opacity-50]="item.disabled"
+          [class.cursor-not-allowed]="item.disabled"
+          (click)="onAction(item, $event)"
         >
           <span>{{ item.label }}</span>
           @if (item.shortcut) {

@@ -1,30 +1,105 @@
-<div class="flex flex-col h-full bg-zinc-900">
-  <!-- Header -->
-  <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
-    <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Pages</span>
+<div class="flex h-full flex-col bg-zinc-900">
+  <div class="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
+    <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Pages & Layers</span>
+    <button
+      type="button"
+      class="inline-flex h-6 w-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+      aria-label="Add page"
+      title="Add page"
+      (click)="addPage()">
+      <svg viewBox="0 0 24 24" class="h-4 w-4 fill-none stroke-current stroke-2">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    </button>
   </div>
 
-  <!-- Layer list -->
   <div class="flex-1 overflow-y-auto">
-    @for (node of nodes(); track node.id) {
+    @for (entry of nodes(); track entry.id) {
       <div
-        class="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors hover:bg-zinc-800"
-        [class.bg-blue-900]="isSelected(node.id)"
-        [class.text-white]="isSelected(node.id)"
-        [class.text-zinc-300]="!isSelected(node.id)"
-        (click)="onLayerClick(node.id, $event)"
-        [style.paddingLeft.px]="12 + (node.depth * 12)"
-      >
-        @if (node.kind === 'page') {
-          <span class="text-xs text-zinc-500">P</span>
-          <span class="truncate flex-1 font-semibold">{{ node.name }}</span>
+        class="flex items-center gap-1 px-2 py-1.5 text-sm transition-colors"
+        data-layer-entry="true"
+        [attr.data-layer-id]="entry.id"
+        [attr.data-layer-kind]="entry.kind"
+        [class.cursor-pointer]="editingId() !== entry.id"
+        [class.bg-blue-900]="isSelected(entry.id)"
+        [class.text-white]="isSelected(entry.id)"
+        [class.text-zinc-300]="!isSelected(entry.id)"
+        [style.paddingLeft.px]="8 + (entry.depth * 14)"
+        (click)="onLayerClick(entry.id, $event)">
+        <button
+          type="button"
+          class="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+          [class.opacity-0]="!entry.hasChildren"
+          [class.pointer-events-none]="!entry.hasChildren"
+          [attr.aria-label]="isExpanded(entry.id) ? 'Collapse' : 'Expand'"
+          (click)="toggleExpanded(entry.id, $event)">
+          <svg viewBox="0 0 24 24" class="h-3 w-3 fill-none stroke-current stroke-2">
+            @if (isExpanded(entry.id)) {
+              <path d="M7 10l5 5 5-5" />
+            } @else {
+              <path d="M10 7l5 5-5 5" />
+            }
+          </svg>
+        </button>
+
+        <span class="inline-flex h-4 w-4 items-center justify-center text-zinc-500">
+          @if (entry.kind === 'page') {
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2"><path d="M7 4h8l4 4v12H7zM15 4v4h4" /></svg>
+          } @else if (entry.type === 'group') {
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2"><path d="M4 7h7v7H4zM13 10h7v7h-7z" /></svg>
+          } @else {
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2"><path d="M6 6h12v12H6z" /></svg>
+          }
+        </span>
+
+        @if (editingId() === entry.id) {
+          <input
+            class="h-6 flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 text-sm text-zinc-100 outline-none"
+            [value]="editingName()"
+            (input)="onRenameInput($any($event.target).value)"
+            (keydown)="onRenameKeyDown($event)"
+            (blur)="commitRename()"
+            autofocus />
         } @else {
-          <span class="text-xs text-zinc-500">{{ node.type === 'group' ? 'G' : 'N' }}</span>
-          <span class="truncate flex-1">{{ node.name }}</span>
+          <span class="flex-1 truncate" (dblclick)="onRenameDblClick(entry.id, $event)">{{ entry.name }}</span>
         }
+
+        <button
+          type="button"
+          class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+          [class.text-zinc-200]="isVisible(entry.id)"
+          (click)="toggleVisible(entry.id, $event)"
+          aria-label="Toggle visibility">
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
+            @if (isVisible(entry.id)) {
+              <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z" />
+              <circle cx="12" cy="12" r="3" />
+            } @else {
+              <path d="M3 3l18 18" />
+              <path d="M2 12s4-6 10-6a11 11 0 0 1 7.5 3.1" />
+              <path d="M22 12s-4 6-10 6a11 11 0 0 1-7.5-3.1" />
+            }
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+          [class.text-zinc-200]="isLocked(entry.id)"
+          (click)="toggleLocked(entry.id, $event)"
+          aria-label="Toggle lock">
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
+            <rect x="7" y="11" width="10" height="9" />
+            @if (isLocked(entry.id)) {
+              <path d="M9 11V8a3 3 0 1 1 6 0v3" />
+            } @else {
+              <path d="M9 11V8a3 3 0 1 1 6 0" />
+            }
+          </svg>
+        </button>
       </div>
     } @empty {
-      <div class="p-4 text-xs text-zinc-500 text-center">No pages</div>
+      <div class="p-4 text-center text-xs text-zinc-500">No pages</div>
     }
   </div>
 </div>

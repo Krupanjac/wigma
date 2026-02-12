@@ -1,11 +1,6 @@
-import { ChangeDetectionStrategy, Component, signal, HostListener } from '@angular/core';
-
-export interface ContextMenuItem {
-  label: string;
-  shortcut?: string;
-  separator?: boolean;
-  action: () => void;
-}
+import { ChangeDetectionStrategy, Component, HostListener, inject } from '@angular/core';
+import { ContextMenuActionItem } from './context-menu.model';
+import { ContextMenuService } from './context-menu.service';
 
 @Component({
   selector: 'app-context-menu',
@@ -15,27 +10,22 @@ export interface ContextMenuItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContextMenuComponent {
-  readonly visible = signal(false);
-  readonly position = signal({ x: 0, y: 0 });
-  readonly items = signal<ContextMenuItem[]>([]);
+  readonly menu = inject(ContextMenuService);
 
-  show(x: number, y: number, items: ContextMenuItem[]): void {
-    this.position.set({ x, y });
-    this.items.set(items);
-    this.visible.set(true);
-  }
-
-  hide(): void {
-    this.visible.set(false);
+  onAction(item: ContextMenuActionItem, event: MouseEvent): void {
+    event.stopPropagation();
+    if (item.disabled) return;
+    item.action();
+    this.menu.hide();
   }
 
   @HostListener('document:click')
   onDocumentClick(): void {
-    this.hide();
+    this.menu.hide();
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    this.hide();
+    this.menu.hide();
   }
 }
