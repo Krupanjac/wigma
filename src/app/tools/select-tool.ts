@@ -354,13 +354,15 @@ export class SelectTool extends BaseTool {
 
     let scaleX = this.resizeState.startScaleX;
     let scaleY = this.resizeState.startScaleY;
+    const minScaleMagnitude = 1e-4;
 
     if (hasX) {
       const denomX = this.resizeState.handleLocal.x - this.resizeState.centerLocal.x;
       if (Math.abs(denomX) > 1e-6) {
         const factorX = (localPos.x - this.resizeState.centerLocal.x) / denomX;
-        const nextMagX = Math.max(0.05, Math.abs(this.resizeState.startScaleX * factorX));
-        scaleX = Math.sign(this.resizeState.startScaleX || 1) * nextMagX;
+        const rawScaleX = this.resizeState.startScaleX * factorX;
+        const signX = Math.sign(rawScaleX) || 1;
+        scaleX = signX * Math.max(minScaleMagnitude, Math.abs(rawScaleX));
       }
     }
 
@@ -368,8 +370,9 @@ export class SelectTool extends BaseTool {
       const denomY = this.resizeState.handleLocal.y - this.resizeState.centerLocal.y;
       if (Math.abs(denomY) > 1e-6) {
         const factorY = (localPos.y - this.resizeState.centerLocal.y) / denomY;
-        const nextMagY = Math.max(0.05, Math.abs(this.resizeState.startScaleY * factorY));
-        scaleY = Math.sign(this.resizeState.startScaleY || 1) * nextMagY;
+        const rawScaleY = this.resizeState.startScaleY * factorY;
+        const signY = Math.sign(rawScaleY) || 1;
+        scaleY = signY * Math.max(minScaleMagnitude, Math.abs(rawScaleY));
       }
     }
 
