@@ -298,6 +298,14 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
     return node?.locked ?? false;
   }
 
+  shouldShowVisibilityAction(id: string): boolean {
+    return this.isSelected(id) || !this.isVisible(id);
+  }
+
+  shouldShowLockAction(id: string): boolean {
+    return this.isSelected(id) || this.isLocked(id);
+  }
+
   hasChildren(id: string): boolean {
     return this.allEntriesById.get(id)?.hasChildren ?? false;
   }

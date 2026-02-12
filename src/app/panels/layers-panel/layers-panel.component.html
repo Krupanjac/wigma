@@ -64,39 +64,43 @@
           <span class="flex-1 truncate" (dblclick)="onRenameDblClick(entry.id, $event)">{{ entry.name }}</span>
         }
 
-        <button
-          type="button"
-          class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-          [class.text-zinc-200]="isVisible(entry.id)"
-          (click)="toggleVisible(entry.id, $event)"
-          aria-label="Toggle visibility">
-          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
-            @if (isVisible(entry.id)) {
-              <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z" />
-              <circle cx="12" cy="12" r="3" />
-            } @else {
-              <path d="M3 3l18 18" />
-              <path d="M2 12s4-6 10-6a11 11 0 0 1 7.5 3.1" />
-              <path d="M22 12s-4 6-10 6a11 11 0 0 1-7.5-3.1" />
-            }
-          </svg>
-        </button>
+        @if (shouldShowVisibilityAction(entry.id)) {
+          <button
+            type="button"
+            class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+            [class.text-zinc-200]="isVisible(entry.id)"
+            (click)="toggleVisible(entry.id, $event)"
+            aria-label="Toggle visibility">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
+              @if (isVisible(entry.id)) {
+                <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z" />
+                <circle cx="12" cy="12" r="3" />
+              } @else {
+                <path d="M3 3l18 18" />
+                <path d="M2 12s4-6 10-6a11 11 0 0 1 7.5 3.1" />
+                <path d="M22 12s-4 6-10 6a11 11 0 0 1-7.5-3.1" />
+              }
+            </svg>
+          </button>
+        }
 
-        <button
-          type="button"
-          class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-          [class.text-zinc-200]="isLocked(entry.id)"
-          (click)="toggleLocked(entry.id, $event)"
-          aria-label="Toggle lock">
-          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
-            <rect x="7" y="11" width="10" height="9" />
-            @if (isLocked(entry.id)) {
-              <path d="M9 11V8a3 3 0 1 1 6 0v3" />
-            } @else {
-              <path d="M9 11V8a3 3 0 1 1 6 0" />
-            }
-          </svg>
-        </button>
+        @if (shouldShowLockAction(entry.id)) {
+          <button
+            type="button"
+            class="inline-flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+            [class.text-zinc-200]="isLocked(entry.id)"
+            (click)="toggleLocked(entry.id, $event)"
+            aria-label="Toggle lock">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-none stroke-current stroke-2">
+              <rect x="7" y="11" width="10" height="9" />
+              @if (isLocked(entry.id)) {
+                <path d="M9 11V8a3 3 0 1 1 6 0v3" />
+              } @else {
+                <path d="M9 11V8a3 3 0 1 1 6 0" />
+              }
+            </svg>
+          </button>
+        }
       </div>
     } @empty {
       <div class="p-4 text-center text-xs text-zinc-500">No pages</div>
