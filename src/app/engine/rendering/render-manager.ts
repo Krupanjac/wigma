@@ -9,7 +9,12 @@ import { SelectionOverlay } from './overlays/selection-overlay';
 import { Vec2 } from '@shared/math/vec2';
 import { GuideState } from '../interaction/guide-state';
 import { GuideOverlay } from './overlays/guide-overlay';
-import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, MARQUEE_FILL_ALPHA, MARQUEE_FILL_COLOR, MARQUEE_STROKE_ALPHA, MARQUEE_STROKE_COLOR, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_STROKE_WIDTH } from '@shared/constants';
+import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, HOVER_OUTLINE_ALPHA, HOVER_OUTLINE_COLOR, HOVER_OUTLINE_WIDTH, MARQUEE_FILL_ALPHA, MARQUEE_FILL_COLOR, MARQUEE_STROKE_ALPHA, MARQUEE_STROKE_COLOR, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_EDGE_ALPHA, SELECTION_EDGE_WIDTH, SELECTION_STROKE_WIDTH } from '@shared/constants';
+import { RectangleNode } from '../scene-graph/rectangle-node';
+import { EllipseNode } from '../scene-graph/ellipse-node';
+import { PolygonNode } from '../scene-graph/polygon-node';
+import { StarNode } from '../scene-graph/star-node';
+import { PathNode } from '../scene-graph/path-node';
 import { Bounds } from '@shared/math/bounds';
 import { graphicsPool } from '../pools/graphics-pool';
 import { textPool } from '../pools/object-pool';
@@ -37,6 +42,15 @@ export class RenderManager {
 
   private singleSelectionGfx = graphicsPool.acquire();
   private singleSelectionTargetId: string | null = null;
+
+  // ── Hover & edge outlines ────────────────────────────────
+  private hoverGfx = graphicsPool.acquire();
+  private hoverTargetId: string | null = null;
+  private edgeGfxMap = new Map<string, Graphics>();
+  private _hoveredNodeId: string | null = null;
+  private _lastHoverZoom = -1;
+  private _lastEdgeZoom = -1;
+  private _lastEdgeSelectionSnapshot: string[] = [];
 
   constructor(
     private sceneGraph: SceneGraphManager,
@@ -139,6 +153,12 @@ export class RenderManager {
       node.clearDirtyFlags();
     }
 
+    // Hover outline (parented to node in world-space)
+    this.updateHoverOutline();
+
+    // Selected-node edge outlines (parented to each selected node)
+    this.updateSelectedEdgeOutlines();
+
     // Single-selection overlay (parented to node)
     this.updateSingleSelectionOverlay();
 
@@ -159,6 +179,243 @@ export class RenderManager {
 
   setMarqueeBounds(bounds: Bounds | null): void {
     this.marqueeBounds = bounds;
+  }
+
+  setHoveredNodeId(id: string | null): void {
+    this._hoveredNodeId = id;
+  }
+
+  // ── Hover outline ─────────────────────────────────────────
+
+  private updateHoverOutline(): void {
+    // Determine target: hovered node that is NOT selected and NOT a page
+    let targetNode: BaseNode | null = null;
+    if (this._hoveredNodeId) {
+      const node = this.sceneGraph.getNode(this._hoveredNodeId);
+      if (node && node.visible && this.isNodeInActivePage(node) && !this.selection.isSelected(node.id)) {
+        if (node.parent !== this.sceneGraph.root) {
+          targetNode = node;
+        }
+      }
+    }
+
+    // Detach from previous host if target changed
+    if (this.hoverTargetId && this.hoverTargetId !== targetNode?.id) {
+      const prevObj = this.displayObjects.get(this.hoverTargetId);
+      if (prevObj) prevObj.removeChild(this.hoverGfx);
+      this.hoverGfx.clear();
+      this.hoverTargetId = null;
+      this._lastHoverZoom = -1;
+    }
+
+    if (!targetNode) return;
+
+    const displayObj = this.displayObjects.get(targetNode.id);
+    if (!displayObj) return;
+
+    // Attach if needed
+    const justAttached = this.hoverTargetId !== targetNode.id;
+    if (justAttached) {
+      displayObj.addChild(this.hoverGfx);
+      this.hoverTargetId = targetNode.id;
+    }
+
+    // Skip redraw if nothing changed (same target, same zoom, no render-dirty)
+    const cam = this.viewport.camera;
+    if (!justAttached && cam.zoom === this._lastHoverZoom && !targetNode.dirty.render) {
+      return;
+    }
+    this._lastHoverZoom = cam.zoom;
+
+    // Draw outline matching geometry shape
+    const sx = Math.max(1e-6, Math.abs(targetNode.scaleX));
+    const sy = Math.max(1e-6, Math.abs(targetNode.scaleY));
+    const strokeW = HOVER_OUTLINE_WIDTH / (cam.zoom * Math.max(sx, sy));
+
+    this.hoverGfx.clear();
+    this.drawNodeOutline(this.hoverGfx, targetNode, strokeW, HOVER_OUTLINE_COLOR, HOVER_OUTLINE_ALPHA);
+  }
+
+  // ── Selected edge outlines ────────────────────────────────
+
+  private updateSelectedEdgeOutlines(): void {
+    const cam = this.viewport.camera;
+    const currentIds = this.selection.selectedNodeIds; // string[]
+
+    // Detect if selection set changed (by reference comparison of sorted snapshot)
+    const selectionChanged = !this.arraysEqual(currentIds, this._lastEdgeSelectionSnapshot);
+    if (selectionChanged) {
+      this._lastEdgeSelectionSnapshot = currentIds.slice();
+    }
+
+    const zoomChanged = cam.zoom !== this._lastEdgeZoom;
+
+    // Remove outlines for nodes no longer selected
+    if (selectionChanged) {
+      const currentSet = new Set(currentIds);
+      for (const [id, gfx] of this.edgeGfxMap) {
+        if (!currentSet.has(id)) {
+          const prevObj = this.displayObjects.get(id);
+          if (prevObj) prevObj.removeChild(gfx);
+          gfx.clear();
+          graphicsPool.release(gfx);
+          this.edgeGfxMap.delete(id);
+        }
+      }
+    }
+
+    // Check if any selected node has render-dirty flag
+    let anyNodeDirty = false;
+    if (!selectionChanged && !zoomChanged) {
+      for (const nodeId of currentIds) {
+        const node = this.sceneGraph.getNode(nodeId);
+        if (node?.dirty.render) { anyNodeDirty = true; break; }
+      }
+      if (!anyNodeDirty) return; // nothing changed, skip all redraws
+    }
+
+    this._lastEdgeZoom = cam.zoom;
+
+    // Draw/update outlines for each selected node
+    for (const nodeId of currentIds) {
+      const node = this.sceneGraph.getNode(nodeId);
+      if (!node || !node.visible || !this.isNodeInActivePage(node)) continue;
+      if (node.parent === this.sceneGraph.root) continue; // skip pages
+      if (node.type === 'group') continue; // skip groups (they have no own geometry)
+
+      const displayObj = this.displayObjects.get(nodeId);
+      if (!displayObj) continue;
+
+      let gfx = this.edgeGfxMap.get(nodeId);
+      const isNew = !gfx;
+      if (!gfx) {
+        gfx = graphicsPool.acquire();
+        this.edgeGfxMap.set(nodeId, gfx);
+        displayObj.addChild(gfx);
+      }
+
+      // Only redraw this node's outline if it's new, dirty, or zoom changed
+      if (!isNew && !zoomChanged && !selectionChanged && !node.dirty.render) continue;
+
+      const sx = Math.max(1e-6, Math.abs(node.scaleX));
+      const sy = Math.max(1e-6, Math.abs(node.scaleY));
+      const strokeW = SELECTION_EDGE_WIDTH / (cam.zoom * Math.max(sx, sy));
+
+      gfx.clear();
+      this.drawNodeOutline(gfx, node, strokeW, SELECTION_COLOR, SELECTION_EDGE_ALPHA);
+    }
+  }
+
+  private arraysEqual(a: string[], b: string[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  // ── Shared outline drawing ────────────────────────────────
+
+  private drawNodeOutline(gfx: Graphics, node: BaseNode, strokeW: number, color: number, alpha: number): void {
+    switch (node.type) {
+      case 'rectangle': {
+        const rect = node as RectangleNode;
+        if (rect.cornerRadius > 0) {
+          gfx.roundRect(0, 0, rect.width, rect.height, rect.cornerRadius);
+        } else {
+          gfx.rect(0, 0, rect.width, rect.height);
+        }
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+      case 'ellipse': {
+        gfx.ellipse(node.width / 2, node.height / 2, node.width / 2, node.height / 2);
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+      case 'polygon': {
+        const poly = node as PolygonNode;
+        const sides = poly.sides;
+        const cx = node.width / 2;
+        const cy = node.height / 2;
+        const rx = node.width / 2;
+        const ry = node.height / 2;
+        for (let i = 0; i <= sides; i++) {
+          const angle = (Math.PI * 2 * i) / sides - Math.PI / 2;
+          const px = cx + rx * Math.cos(angle);
+          const py = cy + ry * Math.sin(angle);
+          if (i === 0) gfx.moveTo(px, py);
+          else gfx.lineTo(px, py);
+        }
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+      case 'star': {
+        const star = node as StarNode;
+        const points = star.points;
+        const innerRatio = star.innerRadiusRatio;
+        const cx = node.width / 2;
+        const cy = node.height / 2;
+        const outerRx = node.width / 2;
+        const outerRy = node.height / 2;
+        const innerRx = outerRx * innerRatio;
+        const innerRy = outerRy * innerRatio;
+        const total = points * 2;
+        for (let i = 0; i <= total; i++) {
+          const angle = (Math.PI * 2 * i) / total - Math.PI / 2;
+          const isOuter = i % 2 === 0;
+          const px = cx + (isOuter ? outerRx : innerRx) * Math.cos(angle);
+          const py = cy + (isOuter ? outerRy : innerRy) * Math.sin(angle);
+          if (i === 0) gfx.moveTo(px, py);
+          else gfx.lineTo(px, py);
+        }
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+      case 'path': {
+        const pathNode = node as PathNode;
+        if (pathNode.anchors.length >= 2) {
+          const anchors = pathNode.anchors;
+          gfx.moveTo(anchors[0].position.x, anchors[0].position.y);
+          for (let i = 1; i < anchors.length; i++) {
+            const prev = anchors[i - 1];
+            const curr = anchors[i];
+            gfx.bezierCurveTo(
+              prev.position.x + prev.handleOut.x, prev.position.y + prev.handleOut.y,
+              curr.position.x + curr.handleIn.x, curr.position.y + curr.handleIn.y,
+              curr.position.x, curr.position.y
+            );
+          }
+          if (pathNode.closed && anchors.length > 2) {
+            const last = anchors[anchors.length - 1];
+            const first = anchors[0];
+            gfx.bezierCurveTo(
+              last.position.x + last.handleOut.x, last.position.y + last.handleOut.y,
+              first.position.x + first.handleIn.x, first.position.y + first.handleIn.y,
+              first.position.x, first.position.y
+            );
+          }
+          gfx.stroke({ color, alpha, width: strokeW });
+        }
+        break;
+      }
+      case 'line':
+      case 'arrow': {
+        // Lines/arrows: just use bounding box edges
+        gfx.rect(0, 0, node.width, node.height);
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+      case 'text':
+      case 'image':
+      case 'video':
+      default: {
+        // Fallback: bounding rect
+        gfx.rect(0, 0, node.width, node.height);
+        gfx.stroke({ color, alpha, width: strokeW });
+        break;
+      }
+    }
   }
 
   private updateSelectionOverlay(): void {
@@ -453,6 +710,11 @@ export class RenderManager {
     graphicsPool.release(this.singleSelectionGfx);
     graphicsPool.release(this.marqueeGfx);
     graphicsPool.release(this.sizeBadgeBg);
+    graphicsPool.release(this.hoverGfx);
+    for (const [, gfx] of this.edgeGfxMap) {
+      graphicsPool.release(gfx);
+    }
+    this.edgeGfxMap.clear();
     textPool.release(this.sizeBadgeText);
     this.selectionOverlay.dispose();
     this.guideOverlay.dispose();

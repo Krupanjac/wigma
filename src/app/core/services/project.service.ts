@@ -14,6 +14,7 @@ import { LineNode } from '../../engine/scene-graph/line-node';
 import { ArrowNode } from '../../engine/scene-graph/arrow-node';
 import { TextNode } from '../../engine/scene-graph/text-node';
 import { ImageNode } from '../../engine/scene-graph/image-node';
+import { VideoNode } from '../../engine/scene-graph/video-node';
 import { PathNode, AnchorType, PathAnchor } from '../../engine/scene-graph/path-node';
 import { Vec2 } from '../../shared/math/vec2';
 import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
@@ -515,6 +516,7 @@ export class ProjectService {
       case 'arrow': return new ArrowNode(name);
       case 'text': return new TextNode(name);
       case 'image': return new ImageNode(name);
+      case 'video': return new VideoNode(name);
       case 'path': return new PathNode(name);
       case 'group':
       default:
@@ -592,6 +594,14 @@ export class ProjectService {
       if (data['fit'] === 'fill' || data['fit'] === 'contain' || data['fit'] === 'cover') {
         node.fit = data['fit'];
       }
+    }
+
+    if (node instanceof VideoNode) {
+      if (typeof data['src'] === 'string') node.src = data['src'];
+      if (typeof data['posterSrc'] === 'string') node.posterSrc = data['posterSrc'];
+      if (typeof data['naturalWidth'] === 'number') node.naturalWidth = data['naturalWidth'];
+      if (typeof data['naturalHeight'] === 'number') node.naturalHeight = data['naturalHeight'];
+      if (typeof data['duration'] === 'number') node.duration = data['duration'];
     }
 
     if (node instanceof GroupNode && typeof data['expanded'] === 'boolean') {

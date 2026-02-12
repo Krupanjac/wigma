@@ -16,6 +16,7 @@ export type NodeType =
   | 'arrow'
   | 'text'
   | 'image'
+  | 'video'
   | 'path'
   | 'group';
 

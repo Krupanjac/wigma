@@ -8,6 +8,7 @@ import { LineRenderer } from './renderers/line-renderer';
 import { ArrowRenderer } from './renderers/arrow-renderer';
 import { TextRenderer } from './renderers/text-renderer';
 import { ImageRenderer } from './renderers/image-renderer';
+import { VideoRenderer } from './renderers/video-renderer';
 import { PathRenderer } from './renderers/path-renderer';
 import { GroupRenderer } from './renderers/group-renderer';
 
@@ -27,6 +28,7 @@ export class NodeRendererRegistry {
     this.register(new ArrowRenderer());
     this.register(new TextRenderer());
     this.register(new ImageRenderer());
+    this.register(new VideoRenderer());
     this.register(new PathRenderer());
     this.register(new GroupRenderer());
   }

@@ -8,8 +8,10 @@
     <!-- Canvas always fills the workspace (sidebars overlay it) -->
     <app-canvas class="absolute inset-0" [engine]="engine" />
 
-    <!-- Floating tools dock -->
-    <app-toolbar class="absolute bottom-3 left-1/2 -translate-x-1/2 z-[80]" />
+    <!-- Floating tools dock (flex wrapper avoids transform, which would trap fixed-position dropdowns) -->
+    <div class="absolute bottom-3 left-0 right-0 z-[80] flex justify-center pointer-events-none">
+      <app-toolbar class="pointer-events-auto" />
+    </div>
 
     <!-- Pages sidebar overlay (resizable) -->
     <div

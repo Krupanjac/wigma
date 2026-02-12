@@ -27,10 +27,18 @@ export const SNAP_THRESHOLD = 5; // pixels (screen-space)
 export const SNAP_LINE_COLOR = 0xff3988;
 export const SNAP_LINE_OPACITY = 0.8;
 
+// ── Hover ────────────────────────────────────────────────────
+
+export const HOVER_OUTLINE_COLOR = 0x3b82f6;
+export const HOVER_OUTLINE_ALPHA = 0.6;
+export const HOVER_OUTLINE_WIDTH = 3.5;
+
 // ── Selection ────────────────────────────────────────────────
 
 export const SELECTION_COLOR = 0x3b82f6;
-export const SELECTION_STROKE_WIDTH = 1.5;
+export const SELECTION_EDGE_ALPHA = 0.9;
+export const SELECTION_EDGE_WIDTH = 2;
+export const SELECTION_STROKE_WIDTH = 2;
 export const HANDLE_SIZE = 8;
 export const HANDLE_FILL = 0xffffff;
 export const HANDLE_STROKE = 0x3b82f6;

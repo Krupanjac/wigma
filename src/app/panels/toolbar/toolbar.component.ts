@@ -113,6 +113,12 @@ export class ToolbarComponent {
   activateGroupTool(groupId: ToolGroupId, event: PointerEvent): void {
     event.preventDefault();
     event.stopPropagation();
+
+    if (this.groupHasDropdown(groupId)) {
+      this.toggleGroup(groupId, event);
+      return;
+    }
+
     this.selectTool(this.groupPrimaryTool(groupId));
   }
 

@@ -87,6 +87,7 @@ export class SelectTool extends BaseTool {
     this.resizeState = null;
     this.rotationState = null;
     this.engine.guides.clear();
+    this.engine.renderManager.setHoveredNodeId(null);
   }
 
   isTransformInteractionActive(): boolean {
@@ -498,14 +499,20 @@ export class SelectTool extends BaseTool {
     const handle = this.hitTransformHandle(event);
     if (handle === 'rotate') {
       this.engine.interaction.setCursor('grab');
+      this.engine.renderManager.setHoveredNodeId(null);
       return;
     }
     if (handle) {
       this.engine.interaction.setCursor(this.cursorForResizeHandle(handle));
+      this.engine.renderManager.setHoveredNodeId(null);
       return;
     }
 
-    this.engine.interaction.setCursor('default');
+    // Hit-test for hover outline
+    const hoverHit = this.engine.hitTester.hitTest(event.worldPosition);
+    this.engine.renderManager.setHoveredNodeId(hoverHit?.id ?? null);
+
+    this.engine.interaction.setCursor(hoverHit ? 'default' : 'default');
   }
 
   private hitTransformHandle(event: PointerEventData): ResizeHandle | 'rotate' | null {
