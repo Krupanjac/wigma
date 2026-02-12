@@ -12,6 +12,7 @@ export class SelectionManager {
 
   private listeners: Array<() => void> = [];
   private _cachedIds: string[] | null = null;
+  private _cachedNodes: BaseNode[] | null = null;
 
   /** Subscribe to selection changes. */
   onChange(handler: () => void): () => void {
@@ -25,6 +26,7 @@ export class SelectionManager {
   private notifyChange(): void {
     this._boundsDirty = true;
     this._cachedIds = null;
+    this._cachedNodes = null;
     for (const listener of this.listeners) {
       listener();
     }
@@ -155,9 +157,12 @@ export class SelectionManager {
     return this._cachedIds;
   }
 
-  /** Get all selected nodes. */
+  /** Get all selected nodes (cached until selection changes). */
   get selectedNodes(): BaseNode[] {
-    return Array.from(this.nodesMap.values());
+    if (!this._cachedNodes) {
+      this._cachedNodes = Array.from(this.nodesMap.values());
+    }
+    return this._cachedNodes;
   }
 
   /** Number of selected nodes. */

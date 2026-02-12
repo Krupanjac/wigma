@@ -38,7 +38,6 @@ export class HitTester {
 
     // Narrow phase + z-order
     let bestNode: BaseNode | null = null;
-    let bestOrder = -Infinity;
 
     for (const id of candidateIds) {
       const node = this.sceneGraph.getNode(id);
@@ -48,9 +47,7 @@ export class HitTester {
       if (!this.isNodeInActivePage(node)) continue;
 
       if (this.narrowPhaseTest(node, worldPos, tolerance)) {
-        const order = this.computeGlobalRenderOrder(node);
-        if (order > bestOrder) {
-          bestOrder = order;
+        if (!bestNode || this.compareRenderOrder(node, bestNode) > 0) {
           bestNode = node;
         }
       }
@@ -79,9 +76,7 @@ export class HitTester {
     }
 
     // Sort by render order (topmost last)
-    return results.sort(
-      (a, b) => this.computeGlobalRenderOrder(a) - this.computeGlobalRenderOrder(b)
-    );
+    return results.sort((a, b) => this.compareRenderOrder(a, b));
   }
 
   /**
@@ -194,19 +189,33 @@ export class HitTester {
     );
   }
 
-  /** Compute a global render order for z-sorting. */
-  private computeGlobalRenderOrder(node: BaseNode): number {
-    const indices: number[] = [];
+  /**
+   * Compute a global render order for z-sorting.
+   * Uses a cached index-path array to avoid allocation per call.
+   * Lexicographic comparison is done inline by callers via compareRenderOrder.
+   */
+  private getRenderOrderPath(node: BaseNode): number[] {
+    const path: number[] = [];
     let current: BaseNode | null = node;
     while (current && current.parent) {
-      indices.unshift(current.renderOrder);
+      path.push(current.renderOrder);
       current = current.parent;
     }
-    // Simple weighted sum for ordering
-    let order = 0;
-    for (let i = 0; i < indices.length; i++) {
-      order = order * 10000 + indices[i];
+    path.reverse();
+    return path;
+  }
+
+  /**
+   * Compare two nodes by their hierarchical render order.
+   * Returns negative if a < b, positive if a > b, 0 if equal.
+   */
+  private compareRenderOrder(a: BaseNode, b: BaseNode): number {
+    const pathA = this.getRenderOrderPath(a);
+    const pathB = this.getRenderOrderPath(b);
+    const len = Math.min(pathA.length, pathB.length);
+    for (let i = 0; i < len; i++) {
+      if (pathA[i] !== pathB[i]) return pathA[i] - pathB[i];
     }
-    return order;
+    return pathA.length - pathB.length;
   }
 }

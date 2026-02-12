@@ -66,16 +66,22 @@ export class ZoomController {
     this.camera.setZoom(zoom);
   }
 
+  /** Smoothing factor for exponential decay (0 = instant, 1 = no movement). */
+  private static readonly LERP_FACTOR = 0.15;
+
   /** Update per frame — apply lerp if active. Returns true if zoom changed. */
   update(): boolean {
     if (this.lerpFramesRemaining <= 0) return false;
 
     this.lerpFramesRemaining--;
-    const t = 1 - (this.lerpFramesRemaining / ZOOM_LERP_FRAMES);
-    this.currentZoom = this.currentZoom + (this.targetZoom - this.currentZoom) * t;
 
-    if (this.lerpFramesRemaining <= 0) {
+    // Exponential decay: fixed proportion of remaining distance each frame
+    this.currentZoom = this.currentZoom + (this.targetZoom - this.currentZoom) * ZoomController.LERP_FACTOR;
+
+    // Snap to target when close enough to avoid infinite convergence
+    if (Math.abs(this.currentZoom - this.targetZoom) < 1e-6 || this.lerpFramesRemaining <= 0) {
       this.currentZoom = this.targetZoom;
+      this.lerpFramesRemaining = 0;
     }
 
     this.camera.setZoom(this.currentZoom);

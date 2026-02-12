@@ -94,8 +94,12 @@ export class AlignmentIndex {
     const key = Math.floor(edge.value / this.bucketSize);
     const arr = map.get(key);
     if (!arr) return;
-    const idx = arr.findIndex(e => e.id === edge.id && e.value === edge.value);
-    if (idx >= 0) arr.splice(idx, 1);
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].id === edge.id && arr[i].value === edge.value) {
+        arr.splice(i, 1);
+        break;
+      }
+    }
     if (arr.length === 0) map.delete(key);
   }
 

@@ -132,9 +132,14 @@ export class SpatialIndex {
    * O(log_M n + k), k = number of results.
    */
   queryPoint(point: Vec2): string[] {
-    return this.queryRange(
-      new Bounds(point.x, point.y, point.x, point.y)
-    );
+    // Inline queryRange to avoid creating an intermediate Bounds object
+    const results = this.tree.search({
+      minX: point.x,
+      minY: point.y,
+      maxX: point.x,
+      maxY: point.y,
+    });
+    return results.map(r => r.id);
   }
 
   /** Get all indexed item IDs. */

@@ -663,7 +663,6 @@ export class RenderManager {
         syncedCount++;
       }
     }
-    console.warn('[Wigma Render] syncExistingNodes — synced', syncedCount, 'nodes, displayObjects total:', this.displayObjects.size);
   }
 
   private onNodeAdded(node: BaseNode): void {

@@ -77,10 +77,8 @@ export class ViewportManager {
   fitToBounds(bounds: Bounds, padding: number = 64): void {
     if (bounds.isEmpty) return;
 
-    const screenWidth = this.camera.viewMatrix.a !== 0
-      ? Math.abs(1 / this.camera.viewMatrix.a) * 1000
-      : 1000; // fallback
-    const screenHeight = screenWidth * 0.75; // approx
+    const screenWidth = this.camera.screenWidth;
+    const screenHeight = this.camera.screenHeight;
 
     const scaleX = (screenWidth - padding * 2) / bounds.width;
     const scaleY = (screenHeight - padding * 2) / bounds.height;

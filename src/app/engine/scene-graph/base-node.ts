@@ -128,8 +128,10 @@ export abstract class BaseNode {
 
   get position(): Vec2 { return new Vec2(this._x, this._y); }
   set position(v: Vec2) {
-    this.x = v.x;
-    this.y = v.y;
+    const changed = this._x !== v.x || this._y !== v.y;
+    this._x = v.x;
+    this._y = v.y;
+    if (changed) this.markTransformDirty();
   }
 
   // ── Size ──
@@ -284,7 +286,8 @@ export abstract class BaseNode {
   }
 
   markBoundsDirty(): void {
-    this.markTransformDirty();
+    this.dirty.bounds = true;
+    this.dirty.render = true;
   }
 
   clearDirtyFlags(): void {
@@ -371,8 +374,8 @@ export abstract class BaseNode {
     target._rotation = this._rotation;
     target._scaleX = this._scaleX;
     target._scaleY = this._scaleY;
-    target.fill = { ...this.fill };
-    target.stroke = { ...this.stroke };
+    target.fill = { color: { ...this.fill.color }, visible: this.fill.visible };
+    target.stroke = { color: { ...this.stroke.color }, width: this.stroke.width, visible: this.stroke.visible };
     target.opacity = this.opacity;
     target.visible = this.visible;
     target.locked = this.locked;

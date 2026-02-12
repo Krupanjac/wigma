@@ -35,6 +35,11 @@ export class SnapEngine {
   addNodeGuides(x: number, y: number, width: number, height: number): void {
     this.horizontalGuides.push(y, y + height / 2, y + height);
     this.verticalGuides.push(x, x + width / 2, x + width);
+    // Defer sorting — caller should call finalizeGuides() when done adding.
+  }
+
+  /** Sort guide arrays after batch insertions. */
+  finalizeGuides(): void {
     this.horizontalGuides.sort((a, b) => a - b);
     this.verticalGuides.sort((a, b) => a - b);
   }
