@@ -24,7 +24,6 @@ import { colorToCss } from './shared/utils/color-utils';
   selector: 'app-canvas',
   imports: [],
   templateUrl: './canvas.component.html',
-  styleUrl: './canvas.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CanvasComponent implements AfterViewInit, OnDestroy {

@@ -7,7 +7,6 @@ import { TextNode } from '../../../engine/scene-graph/text-node';
   selector: 'app-text-section',
   imports: [],
   templateUrl: './text-section.component.html',
-  styleUrl: './text-section.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TextSectionComponent implements AfterViewInit, OnChanges {

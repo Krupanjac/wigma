@@ -8,7 +8,6 @@ import { EditorMode, EditorModeService } from '../../core/services/editor-mode.s
   selector: 'app-toolbar',
   imports: [],
   templateUrl: './toolbar.component.html',
-  styleUrl: './toolbar.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ToolbarComponent {

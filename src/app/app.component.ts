@@ -38,7 +38,6 @@ import { Vec2 } from './shared/math/vec2';
     LoaderComponent,
   ],
   templateUrl: './app.component.html',
-  styleUrl: './app.component.css',
 })
 export class AppComponent implements OnInit, OnDestroy {
   private ngZone = inject(NgZone);

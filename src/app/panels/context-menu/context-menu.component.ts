@@ -6,7 +6,6 @@ import { ContextMenuService } from './context-menu.service';
   selector: 'app-context-menu',
   imports: [],
   templateUrl: './context-menu.component.html',
-  styleUrl: './context-menu.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContextMenuComponent {

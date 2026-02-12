@@ -8,7 +8,6 @@ import { colorToCss, colorToHex, hexToColor } from '../../../shared/utils/color-
   selector: 'app-fill-section',
   imports: [],
   templateUrl: './fill-section.component.html',
-  styleUrl: './fill-section.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FillSectionComponent {

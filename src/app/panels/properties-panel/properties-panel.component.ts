@@ -17,7 +17,6 @@ import { ProjectService } from '../../core/services/project.service';
     TextSectionComponent,
   ],
   templateUrl: './properties-panel.component.html',
-  styleUrl: './properties-panel.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropertiesPanelComponent implements OnChanges, OnDestroy {

@@ -7,7 +7,6 @@ import { colorToCss, colorToHex, hexToColor } from '../../../shared/utils/color-
   selector: 'app-stroke-section',
   imports: [],
   templateUrl: './stroke-section.component.html',
-  styleUrl: './stroke-section.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class StrokeSectionComponent {

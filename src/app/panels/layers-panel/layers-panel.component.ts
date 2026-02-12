@@ -34,7 +34,6 @@ interface LayerEntry {
   selector: 'app-layers-panel',
   imports: [],
   templateUrl: './layers-panel.component.html',
-  styleUrl: './layers-panel.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayersPanelComponent implements OnChanges, OnDestroy {

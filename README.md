@@ -1,6 +1,6 @@
 # Wigma
 
-A Figma-like vector design engine built with **Angular 21**, **PixiJS 8**, **Tailwind CSS 4.1**, and **rbush** R-tree spatial indexing. Wigma provides GPU-accelerated canvas rendering, a rich tool palette, undo/redo history, and a dark-themed professional UI.
+A Figma-like vector design engine built with **Angular 21**, **PixiJS 8**, **Tailwind CSS 4.1**, and **rbush** R-tree spatial indexing. Wigma provides GPU-accelerated canvas rendering, a rich tool palette, undo/redo history, clipboard operations, IndexedDB persistence, and a dark-themed professional UI.
 
 ---
 
@@ -14,8 +14,10 @@ A Figma-like vector design engine built with **Angular 21**, **PixiJS 8**, **Tai
 6. [Scene Graph & Node Model](#scene-graph--node-model)
 7. [Tool System](#tool-system)
 8. [Command Pattern & Undo/Redo](#command-pattern--undoredo)
-9. [Performance Strategies](#performance-strategies)
-10. [Keyboard Shortcuts](#keyboard-shortcuts)
+9. [Persistence Layer](#persistence-layer)
+10. [Performance Strategies](#performance-strategies)
+11. [Keyboard Shortcuts](#keyboard-shortcuts)
+12. [Tech Stack](#tech-stack)
 
 ---
 
@@ -62,25 +64,28 @@ src/app/
 │   │   ├── interaction-manager.ts
 │   │   ├── hit-tester.ts      # Two-phase broad + narrow hit testing
 │   │   ├── snap-engine.ts     # Binary-search snap guides
-│   │   └── drag-handler.ts
-│   ├── overlays/              # Selection handles, guides, grid, cursor
+│   │   ├── alignment-index.ts # Bucketed hashmap snap alignment
+│   │   ├── guide-state.ts     # Alignment guide visual state
+│   │   └── drag-handler.ts    # Batch drag with deferred spatial updates
 │   ├── pools/                 # Object pools for Graphics, Sprite, Container, Text
 │   ├── rendering/
-│   │   ├── renderers/         # Per-node-type PixiJS renderers
+│   │   ├── renderers/         # Per-node-type PixiJS renderers (12 types)
+│   │   ├── overlays/          # Selection, grid, guide, cursor overlays
 │   │   ├── node-renderer.registry.ts
 │   │   ├── render-pipeline.ts # 6-step frame lifecycle
-│   │   └── render-manager.ts
+│   │   └── render-manager.ts  # Dirty-only render loop, skips inactive pages
 │   ├── scene-graph/
 │   │   ├── base-node.ts       # Abstract base with dirty flags
 │   │   ├── rectangle-node.ts, ellipse-node.ts, polygon-node.ts, …
+│   │   ├── image-node.ts      # Image node with TextureStore integration
 │   │   ├── group-node.ts      # Recursive bounds union
-│   │   └── scene-graph-manager.ts  # Flat Map + tree, emits events
+│   │   └── scene-graph-manager.ts  # Flat Map + tree, batch event coalescing
 │   ├── selection/
-│   │   ├── selection-manager.ts
+│   │   ├── selection-manager.ts  # Cached selectedNodeIds
 │   │   ├── selection-box.ts   # Rubber-band marquee
 │   │   └── alignment.ts       # Align/distribute algorithms
 │   ├── spatial/
-│   │   ├── spatial-index.ts   # rbush R-tree facade
+│   │   ├── spatial-index.ts   # rbush R-tree facade with bulk updateBatch()
 │   │   └── bounds-calculator.ts
 │   └── viewport/
 │       ├── camera.ts          # View/inverse matrices
@@ -96,19 +101,25 @@ src/app/
 │   ├── commands/              # Command pattern for undo/redo
 │   │   ├── command.interface.ts
 │   │   ├── move-node.command.ts, resize-node.command.ts, …
-│   │   └── batch-command.ts
+│   │   └── batch-command.ts   # Auto-batching with SceneGraphManager
 │   ├── models/                # TypeScript interfaces
-│   └── services/              # Angular services (history, clipboard, etc.)
+│   └── services/              # Angular services
+│       ├── history.service.ts    # Undo/redo stack (max 200)
+│       ├── clipboard.service.ts  # Copy/cut/paste with deep clone
+│       ├── project.service.ts    # IndexedDB persistence, auto-save
+│       ├── keybinding.service.ts # Keyboard shortcut management
+│       ├── export.service.ts     # PNG/JSON export pipeline
+│       └── loader.service.ts     # Loading state management
 ├── panels/                    # Angular UI components (Tailwind)
 │   ├── toolbar/
-│   ├── layers-panel/
-│   ├── properties-panel/      # With sub-sections: transform, fill, stroke, text
+│   ├── layers-panel/          # Animated expand/collapse, rename, visibility
+│   ├── properties-panel/      # Sub-sections: transform, fill, stroke, text
 │   ├── menu-bar/
 │   └── context-menu/
 └── shared/
     ├── math/                  # Vec2, Matrix2D, Bounds, Bézier
     ├── data-structures/       # ObjectPool<T>
-    └── utils/                 # uid, color-utils, geometry-utils, constants
+    └── utils/                 # uid, color-utils, geometry-utils, idb-storage
 ```
 
 ---
@@ -333,6 +344,40 @@ Available commands:
 
 ---
 
+## Persistence Layer
+
+Wigma persists the full project document (all pages, nodes, and embedded assets) to the browser's **IndexedDB** via a lightweight `IdbStorage` wrapper.
+
+### Why IndexedDB?
+
+localStorage is limited to ~5–10 MB depending on the browser. Design documents with embedded image/video data URLs can easily exceed this (e.g. 144 MB for ~900 nodes with images). IndexedDB has no practical size limit.
+
+### Storage Architecture
+
+```
+┌───────────────────────────────────────────┐
+│  ProjectService                           │
+│  ├── schedulePersist()                    │
+│  │   └── queueMicrotask → fire-and-forget │
+│  ├── writeBrowserSnapshot() → async IDB   │
+│  └── readBrowserSnapshot() → async IDB    │
+│       └── localStorage migration on first │
+│           load for backwards compatibility│
+├───────────────────────────────────────────┤
+│  IdbStorage (shared/utils/idb-storage.ts) │
+│  ├── Database: wigma-db                   │
+│  ├── Object store: snapshots              │
+│  └── Methods: get(key), set(key, value),  │
+│       delete(key)                         │
+└───────────────────────────────────────────┘
+```
+
+- **Auto-save:** Scene graph events trigger `schedulePersist()`, which debounces via `queueMicrotask` and writes asynchronously without blocking the main thread.
+- **Migration:** On first load, if the old `localStorage` snapshot exists, it is read, migrated to IndexedDB, and the localStorage key is removed.
+- **Fire-and-forget writes:** `writeBrowserSnapshot()` is async but not awaited — persistence never blocks the UI.
+
+---
+
 ## Performance Strategies
 
 | Strategy                    | Mechanism                                                |
@@ -340,12 +385,21 @@ Available commands:
 | NgZone escape               | Engine runs outside Angular, no CD on rAF/mouse/wheel    |
 | Dirty flag propagation      | Skip unchanged subtrees in transform/render updates      |
 | Idle frame detection        | Skip entire frame when nothing is dirty                  |
+| Dirty-only render loop      | Skip non-active-page nodes, inline dirty flag clearing   |
 | R-tree viewport culling     | Only render nodes within visible bounds                  |
+| Batch spatial updates       | `updateBatch()` — bulk R-tree rebuild for ≥10 nodes      |
+| Batch event coalescing      | `beginBatch()`/`endBatch()` defers hierarchy-changed events until entire operation completes |
+| BatchCommand auto-batching  | `BatchCommand` wraps execute/undo in begin/endBatch to prevent O(N×M) cascading |
+| Debounced persistence       | `schedulePersist()` uses queueMicrotask — one write per microtask tick |
+| Debounced layers panel      | `refreshNodes()` debounced via queueMicrotask, skips property-only events |
+| Alignment skip during drag  | Alignment index rebuild deferred during active drag       |
 | Object pools                | Reuse PixiJS Graphics/Sprite/Container/Text objects in renderers and overlays |
 | Immutable + mutable math    | Zero-alloc inner loops with MutableVec2/Matrix2D/Bounds  |
 | Adaptive Bézier subdivision | Fewer vertices at low zoom, more at high zoom            |
 | OnPush change detection     | All Angular components use OnPush                        |
-| Signal-based reactivity     | Computed signals replace manual subscriptions             |
+| Signal-based reactivity     | Computed signals replace manual subscriptions            |
+| IndexedDB persistence       | Async fire-and-forget writes to IndexedDB (no localStorage size limit) |
+| Texture deduplication       | TextureStore caches image/video textures by data URL hash |
 
 ---
 
@@ -389,10 +443,11 @@ Available commands:
 
 | Technology     | Version | Purpose                              |
 | -------------- | ------- | ------------------------------------ |
-| Angular        | 21.1.4    | UI framework, signals, DI, routing   |
+| Angular        | 21.1.4  | UI framework, signals, DI, routing   |
 | PixiJS         | 8.16    | GPU-accelerated 2D canvas rendering  |
 | Tailwind CSS   | 4.1     | Utility-first styling (PostCSS)      |
 | rbush          | 4.0     | R-tree spatial index                 |
-| TypeScript     | 5.9.3     | Type safety throughout               |
+| IndexedDB      | —       | Browser persistence (no size limit)  |
+| TypeScript     | 5.9.3   | Type safety throughout               |
 
 ---

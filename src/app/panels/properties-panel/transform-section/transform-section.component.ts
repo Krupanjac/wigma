@@ -12,7 +12,6 @@ import { TransformAnchorService } from '../../../core/services/transform-anchor.
   selector: 'app-transform-section',
   imports: [],
   templateUrl: './transform-section.component.html',
-  styleUrl: './transform-section.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TransformSectionComponent {

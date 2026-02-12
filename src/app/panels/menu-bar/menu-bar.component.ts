@@ -5,7 +5,6 @@ import { ProjectService } from '../../core/services/project.service';
   selector: 'app-menu-bar',
   imports: [],
   templateUrl: './menu-bar.component.html',
-  styleUrl: './menu-bar.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MenuBarComponent {
