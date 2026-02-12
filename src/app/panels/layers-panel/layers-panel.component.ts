@@ -124,9 +124,17 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
     // Build initial list
     this.refreshNodes();
 
-    // Subscribe to scene graph changes
-    this.unsubscribe = this.engine.sceneGraph.on(() => {
-      this.refreshNodes();
+    // Subscribe to scene graph changes (debounced, skip property-only changes)
+    let refreshPending = false;
+    this.unsubscribe = this.engine.sceneGraph.on(event => {
+      // Skip events that don't change hierarchy structure
+      if (event.type === 'node-changed' || event.type === 'nodes-changed') return;
+      if (refreshPending) return;
+      refreshPending = true;
+      queueMicrotask(() => {
+        refreshPending = false;
+        this.refreshNodes();
+      });
     });
 
     const syncSelection = () => {

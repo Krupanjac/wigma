@@ -88,7 +88,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
     // Wire services
     this.toolManager.init(this.engine!);
-    this.project.init(this.engine!);
+    this.project.init(this.engine!); // async — restores from IndexedDB in background
     this.clipboard.init(this.engine!);
     this.exportService.init(this.engine!);
     this.menuCommands.init(this.engine!);
@@ -229,7 +229,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.dismissInitLoader?.();
     window.removeEventListener('wigma:canvas-ready', this.onCanvasReady);
-    this.project.saveToBrowser();
+    void this.project.saveToBrowser();
     this.engine?.dispose();
     this.keybinding.unregisterAll();
 
@@ -239,7 +239,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   @HostListener('window:beforeunload')
   onBeforeUnload(): void {
-    this.project.saveToBrowser();
+    void this.project.saveToBrowser();
   }
 
   @HostListener('document:contextmenu', ['$event'])

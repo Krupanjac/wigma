@@ -128,7 +128,16 @@ export class RenderManager {
       const node = this.sceneGraph.getNode(id);
       if (!node) continue;
 
-      // Always update transform (cheap)
+      // Skip full sync for nodes on non-active pages
+      const isActive = this.isNodeInActivePage(node);
+      displayObj.visible = node.visible && isActive;
+      if (!isActive) {
+        node.clearDirtyFlags();
+        continue;
+      }
+
+      // Always sync transform (cheap — 6 property sets; dirty flags may
+      // already be consumed by spatial-index updates before frame() runs)
       const localBounds = node.localBounds;
       const pivotX = (localBounds.minX + localBounds.maxX) / 2;
       const pivotY = (localBounds.minY + localBounds.maxY) / 2;
@@ -137,7 +146,6 @@ export class RenderManager {
       displayObj.rotation = node.rotation;
       displayObj.scale.set(node.scaleX, node.scaleY);
       displayObj.alpha = node.opacity;
-      displayObj.visible = node.visible && this.isNodeInActivePage(node);
 
       // Re-draw shape only when visual properties changed
       if (node.dirty.render) {
@@ -146,10 +154,10 @@ export class RenderManager {
           renderer.sync(node, displayObj);
         }
       }
-    }
 
-    // Clear dirty flags on all nodes (no array allocation)
-    this.sceneGraph.forEachNode(node => node.clearDirtyFlags());
+      // Clear dirty flags inline — avoid separate O(N) pass
+      node.clearDirtyFlags();
+    }
 
     // Hover outline (parented to node in world-space)
     this.updateHoverOutline();

@@ -50,7 +50,7 @@ export class MenuCommandsService {
     if (!this.engine) return;
     const pasted = this.clipboard.paste();
     if (pasted.length > 0) {
-      this.engine.selection.clearSelection();
+      // selectMultiple clears internally — no need for separate clearSelection()
       this.engine.selection.selectMultiple(pasted);
     }
   }
@@ -109,7 +109,7 @@ export class MenuCommandsService {
   }
 
   saveProjectToBrowser(): void {
-    this.project.saveToBrowser();
+    void this.project.saveToBrowser();
   }
 
   importProjectJSON(json: string): void {

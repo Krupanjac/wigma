@@ -18,6 +18,7 @@ import { VideoNode } from '../../engine/scene-graph/video-node';
 import { PathNode, AnchorType, PathAnchor } from '../../engine/scene-graph/path-node';
 import { Vec2 } from '../../shared/math/vec2';
 import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
+import { IdbStorage } from '../../shared/utils/idb-storage';
 
 /* ── Diagnostic logging helper ─────────────────────────────── */
 const LOG_PREFIX = '[Wigma Persist]';
@@ -48,6 +49,7 @@ export class ProjectService {
   private engine: CanvasEngine | null = null;
   private unsubscribeScene: (() => void) | null = null;
   private persistQueued = false;
+  private idb = new IdbStorage('wigma-db', 'snapshots');
   private suspendPersistence = false;
   private sessionActivated = false;
 
@@ -71,7 +73,7 @@ export class ProjectService {
   readonly document = computed(() => this._document());
   readonly isDirty = computed(() => this._isDirty());
 
-  init(engine: CanvasEngine): void {
+  async init(engine: CanvasEngine): Promise<void> {
     this.engine = engine;
     plog('init — engine attached');
 
@@ -83,7 +85,7 @@ export class ProjectService {
     // Expose a global debug helper on window
     (globalThis as Record<string, unknown>)['__wigmaDebug'] = () => this.debugDump();
 
-    const restored = this.restoreFromBrowser();
+    const restored = await this.restoreFromBrowser();
     plog('init — restored from browser:', restored);
     if (!restored) {
       this.newProject('Untitled', false, false);
@@ -111,14 +113,11 @@ export class ProjectService {
     }
     const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
     if (raw) {
-      try {
-        const stored = JSON.parse(raw) as DocumentModel;
-        console.log('localStorage nodes.length:', stored.nodes?.length ?? 'MISSING');
-        console.log('localStorage total node count:', countNodesDeep(stored.nodes ?? []));
-      } catch { console.log('localStorage: INVALID JSON'); }
+      console.log('localStorage (legacy): present,', raw.length, 'bytes');
     } else {
-      console.log('localStorage: EMPTY');
+      console.log('localStorage (legacy): EMPTY');
     }
+    console.log('Storage: IndexedDB (wigma-db/snapshots)');
     console.groupEnd();
   }
 
@@ -127,14 +126,14 @@ export class ProjectService {
     if (!nextName) return;
     const doc = this._document();
     this._document.set({ ...doc, name: nextName, updatedAt: new Date().toISOString() });
-    this.writeBrowserSnapshot();
+    void this.writeBrowserSnapshot();
     this._isDirty.set(true);
   }
 
   setDescription(description: string): void {
     const doc = this._document();
     this._document.set({ ...doc, description, updatedAt: new Date().toISOString() });
-    this.writeBrowserSnapshot();
+    void this.writeBrowserSnapshot();
     this._isDirty.set(true);
   }
 
@@ -215,19 +214,19 @@ export class ProjectService {
     this.loadDocument(doc, markDirty, persist);
   }
 
-  saveToBrowser(): void {
+  async saveToBrowser(): Promise<void> {
     this.refreshDocumentFromEngine();
     this.sessionActivated = true;
     const doc = this._document();
     plog('saveToBrowser — pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
-    this.writeBrowserSnapshot();
+    await this.writeBrowserSnapshot();
     this._isDirty.set(false);
   }
 
-  restoreFromBrowser(): boolean {
-    const raw = this.readBrowserSnapshot();
+  async restoreFromBrowser(): Promise<boolean> {
+    const raw = await this.readBrowserSnapshot();
     if (!raw) {
-      plog('restoreFromBrowser — no data in localStorage');
+      plog('restoreFromBrowser — no data');
       return false;
     }
 
@@ -267,7 +266,7 @@ export class ProjectService {
       this.persistQueued = false;
       if (this.suspendPersistence) return; // re-check after microtask
       this.refreshDocumentFromEngine();
-      this.writeBrowserSnapshot();
+      void this.writeBrowserSnapshot();
       this._isDirty.set(true);
     });
   }
@@ -276,7 +275,7 @@ export class ProjectService {
     if (this.suspendPersistence) return;
     if (!this.sessionActivated) return;
     this.refreshDocumentFromEngine();
-    this.writeBrowserSnapshot();
+    void this.writeBrowserSnapshot();
     if (markDirty) this._isDirty.set(true);
   }
 
@@ -378,7 +377,7 @@ export class ProjectService {
       this._isDirty.set(markDirty);
       this.sessionActivated = persist;
       if (persist) {
-        this.writeBrowserSnapshot();
+        void this.writeBrowserSnapshot();
       }
     } catch (e) {
       console.error(LOG_PREFIX, 'loadDocument — CRITICAL ERROR:', e);
@@ -402,7 +401,7 @@ export class ProjectService {
       }
 
       if (event.type === 'node-added') {
-        this.persistImmediately(true);
+        this.schedulePersist();
         return;
       }
 
@@ -635,11 +634,11 @@ export class ProjectService {
     }
   }
 
-  private writeBrowserSnapshot(): void {
+  private async writeBrowserSnapshot(): Promise<void> {
     try {
       const doc = this._document();
       const json = JSON.stringify(doc);
-      localStorage.setItem(ProjectService.STORAGE_KEY, json);
+      await this.idb.set(ProjectService.STORAGE_KEY, json);
       plog('writeBrowserSnapshot — wrote', json.length, 'bytes, pages:', doc.nodes.length,
            'total nodes:', countNodesDeep(doc.nodes));
     } catch (e) {
@@ -647,11 +646,26 @@ export class ProjectService {
     }
   }
 
-  private readBrowserSnapshot(): string | null {
+  private async readBrowserSnapshot(): Promise<string | null> {
     try {
-      const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
-      plog('readBrowserSnapshot —', raw ? `found ${raw.length} bytes` : 'empty');
-      return raw;
+      // Try IndexedDB first
+      const idbRaw = await this.idb.get(ProjectService.STORAGE_KEY);
+      if (idbRaw) {
+        plog('readBrowserSnapshot — found', idbRaw.length, 'bytes in IndexedDB');
+        return idbRaw;
+      }
+
+      // Migrate from localStorage if it exists there
+      const lsRaw = localStorage.getItem(ProjectService.STORAGE_KEY);
+      if (lsRaw) {
+        plog('readBrowserSnapshot — migrating', lsRaw.length, 'bytes from localStorage to IndexedDB');
+        await this.idb.set(ProjectService.STORAGE_KEY, lsRaw);
+        localStorage.removeItem(ProjectService.STORAGE_KEY);
+        return lsRaw;
+      }
+
+      plog('readBrowserSnapshot — empty');
+      return null;
     } catch (e) {
       console.error(LOG_PREFIX, 'readBrowserSnapshot error:', e);
       return null;
