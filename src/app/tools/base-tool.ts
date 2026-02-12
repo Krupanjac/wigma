@@ -5,6 +5,10 @@ import { PointerEventData } from '../engine/interaction/interaction-manager';
  */
 export type ToolType =
   | 'select'
+  | 'scale'
+  | 'frame'
+  | 'section'
+  | 'slice'
   | 'rectangle'
   | 'ellipse'
   | 'polygon'
@@ -12,7 +16,11 @@ export type ToolType =
   | 'line'
   | 'arrow'
   | 'pen'
+  | 'pencil'
   | 'text'
+  | 'image'
+  | 'video'
+  | 'comment'
   | 'hand'
   | 'zoom';
 

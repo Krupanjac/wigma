@@ -10,6 +10,7 @@ import { Bounds } from '@shared/math/bounds';
 import { Matrix2D } from '@shared/math/matrix2d';
 import { Guide } from '../engine/interaction/guide-state';
 import { TextNode } from '../engine/scene-graph/text-node';
+import { TransformAnchor, anchorToNormalized } from '../shared/transform-anchor';
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -50,9 +51,9 @@ interface RotationState {
  */
 export class SelectTool extends BaseTool {
   readonly type: ToolType = 'select';
-  readonly label = 'Select';
-  readonly icon = 'cursor';
-  readonly shortcut = 'V';
+  readonly label: string = 'Select';
+  readonly icon: string = 'cursor';
+  readonly shortcut: string = 'V';
 
   private dragHandler = new DragHandler();
   private selectionBox = new SelectionBox();
@@ -70,6 +71,10 @@ export class SelectTool extends BaseTool {
 
   constructor(private engine: CanvasEngine) {
     super();
+  }
+
+  protected getTransformAnchor(): TransformAnchor | null {
+    return null;
   }
 
   override onActivate(): void {
@@ -565,7 +570,10 @@ export class SelectTool extends BaseTool {
   private createResizeState(node: BaseNode, handle: ResizeHandle): ResizeState {
     const bounds = node.localBounds;
     const handleLocal = this.handlePoint(bounds, handle);
-    const anchorLocal = this.handlePoint(bounds, this.oppositeHandle(handle));
+    const anchor = this.getTransformAnchor();
+    const anchorLocal = anchor
+      ? this.anchorPoint(bounds, anchor)
+      : this.handlePoint(bounds, this.oppositeHandle(handle));
     const startWorldInv = node.worldMatrix.invert();
     if (!startWorldInv) {
       throw new Error('Node transform is not invertible for resize interaction.');
@@ -586,6 +594,14 @@ export class SelectTool extends BaseTool {
       anchorLocal,
       anchorWorld: node.worldMatrix.apply(anchorLocal),
     };
+  }
+
+  private anchorPoint(bounds: Bounds, anchor: TransformAnchor): Vec2 {
+    const normalized = anchorToNormalized(anchor);
+    return new Vec2(
+      bounds.minX + bounds.width * normalized.x,
+      bounds.minY + bounds.height * normalized.y
+    );
   }
 
   private createRotationState(node: BaseNode, pointerWorld: Vec2): RotationState {

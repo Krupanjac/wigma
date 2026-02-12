@@ -1,4 +1,4 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { BaseTool, ToolType } from './base-tool';
 import { CanvasEngine } from '../engine/canvas-engine';
 import { SelectTool } from './select-tool';
@@ -12,6 +12,15 @@ import { PenTool } from './pen-tool';
 import { TextTool } from './text-tool';
 import { HandTool } from './hand-tool';
 import { ZoomTool } from './zoom-tool';
+import { ScaleTool } from './scale-tool';
+import { FrameTool } from './frame-tool';
+import { SectionTool } from './section-tool';
+import { SliceTool } from './slice-tool';
+import { ImageTool } from './image-tool';
+import { VideoTool } from './video-tool';
+import { PencilTool } from './pencil-tool';
+import { CommentTool } from './comment-tool';
+import { TransformAnchorService } from '../core/services/transform-anchor.service';
 
 /**
  * ToolManagerService — Angular service wrapping the OOP tool system.
@@ -21,6 +30,7 @@ import { ZoomTool } from './zoom-tool';
   providedIn: 'root'
 })
 export class ToolManagerService {
+  private transformAnchor = inject(TransformAnchorService);
   private tools = new Map<ToolType, BaseTool>();
   private selectTool: SelectTool | null = null;
   private _activeTool = signal<BaseTool | null>(null);
@@ -31,7 +41,7 @@ export class ToolManagerService {
 
   private shouldAutoReturnToSelect(activeType: ToolType, engine: CanvasEngine): boolean {
     if (!this.selectTool) return false;
-    if (!['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'text'].includes(activeType)) {
+    if (!['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'text', 'frame', 'section', 'slice', 'image', 'video', 'comment'].includes(activeType)) {
       return false;
     }
 
@@ -46,6 +56,10 @@ export class ToolManagerService {
   init(engine: CanvasEngine): void {
     this.selectTool = new SelectTool(engine);
     this.tools.set('select', this.selectTool);
+    this.tools.set('scale', new ScaleTool(engine, () => this.transformAnchor.anchor()));
+    this.tools.set('frame', new FrameTool(engine));
+    this.tools.set('section', new SectionTool(engine));
+    this.tools.set('slice', new SliceTool(engine));
     this.tools.set('rectangle', new RectangleTool(engine));
     this.tools.set('ellipse', new EllipseTool(engine));
     this.tools.set('polygon', new PolygonTool(engine));
@@ -53,7 +67,11 @@ export class ToolManagerService {
     this.tools.set('line', new LineTool(engine));
     this.tools.set('arrow', new ArrowTool(engine));
     this.tools.set('pen', new PenTool(engine));
+    this.tools.set('pencil', new PencilTool(engine));
     this.tools.set('text', new TextTool(engine));
+    this.tools.set('image', new ImageTool(engine));
+    this.tools.set('video', new VideoTool(engine));
+    this.tools.set('comment', new CommentTool(engine));
     this.tools.set('hand', new HandTool(engine));
     this.tools.set('zoom', new ZoomTool(engine));
 

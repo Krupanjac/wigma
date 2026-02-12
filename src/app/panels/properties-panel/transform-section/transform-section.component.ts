@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core';
 import { CanvasEngine } from '../../../engine/canvas-engine';
 import { BaseNode } from '../../../engine/scene-graph/base-node';
 import { PolygonNode } from '../../../engine/scene-graph/polygon-node';
 import { StarNode } from '../../../engine/scene-graph/star-node';
 import { TextNode } from '../../../engine/scene-graph/text-node';
 import { Bounds } from '../../../shared/math/bounds';
+import { TransformAnchor, TRANSFORM_ANCHORS } from '../../../shared/transform-anchor';
+import { TransformAnchorService } from '../../../core/services/transform-anchor.service';
 
 @Component({
   selector: 'app-transform-section',
@@ -14,9 +16,21 @@ import { Bounds } from '../../../shared/math/bounds';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TransformSectionComponent {
+  private transformAnchor = inject(TransformAnchorService);
+
   @Input() engine: CanvasEngine | null = null;
   @Input() node: BaseNode | null = null;
   @Input() refreshTick = 0;
+
+  readonly anchors = TRANSFORM_ANCHORS;
+
+  activeAnchor(): TransformAnchor {
+    return this.transformAnchor.anchor();
+  }
+
+  setAnchor(anchor: TransformAnchor): void {
+    this.transformAnchor.setAnchor(anchor);
+  }
 
   private roundNumber(value: number): number {
     const precision = 100;
@@ -63,6 +77,22 @@ export class TransformSectionComponent {
     return node?.type === 'text' ? (node as TextNode) : null;
   }
 
+  private anchorPoint(bounds: Bounds, anchor: TransformAnchor): { x: number; y: number } {
+    switch (anchor) {
+      case 'top-left': return { x: bounds.minX, y: bounds.minY };
+      case 'top-center': return { x: bounds.centerX, y: bounds.minY };
+      case 'top-right': return { x: bounds.maxX, y: bounds.minY };
+      case 'middle-left': return { x: bounds.minX, y: bounds.centerY };
+      case 'center': return { x: bounds.centerX, y: bounds.centerY };
+      case 'middle-right': return { x: bounds.maxX, y: bounds.centerY };
+      case 'bottom-left': return { x: bounds.minX, y: bounds.maxY };
+      case 'bottom-center': return { x: bounds.centerX, y: bounds.maxY };
+      case 'bottom-right':
+      default:
+        return { x: bounds.maxX, y: bounds.maxY };
+    }
+  }
+
   setNumber(
     key: 'x' | 'y' | 'width' | 'height' | 'rotation',
     raw: string
@@ -88,6 +118,7 @@ export class TransformSectionComponent {
       if (text) {
         const b = this.worldBounds(text);
         const desired = Math.max(0.01, next);
+        const anchorBefore = this.anchorPoint(b, this.activeAnchor());
 
         if (key === 'width') {
           text.width = desired;
@@ -100,6 +131,12 @@ export class TransformSectionComponent {
 
         text.scaleX = Math.sign(text.scaleX) || 1;
         text.scaleY = Math.sign(text.scaleY) || 1;
+
+        const after = this.worldBounds(text);
+        const anchorAfter = this.anchorPoint(after, this.activeAnchor());
+        text.x = text.x + (anchorBefore.x - anchorAfter.x);
+        text.y = text.y + (anchorBefore.y - anchorAfter.y);
+
         text.markRenderDirty();
         text.markBoundsDirty();
         this.engine?.sceneGraph.notifyNodeChanged(text);
@@ -108,22 +145,22 @@ export class TransformSectionComponent {
 
       const b = this.worldBounds(this.node);
       const desired = Math.max(0.01, next);
+      const anchorBefore = this.anchorPoint(b, this.activeAnchor());
 
       if (key === 'width') {
         if (b.width <= 1e-6) return;
-        const left = b.minX;
         const factor = desired / b.width;
         this.node.scaleX = this.node.scaleX * factor;
-        const after = this.worldBounds(this.node);
-        this.node.x = this.node.x + (left - after.minX);
       } else {
         if (b.height <= 1e-6) return;
-        const top = b.minY;
         const factor = desired / b.height;
         this.node.scaleY = this.node.scaleY * factor;
-        const after = this.worldBounds(this.node);
-        this.node.y = this.node.y + (top - after.minY);
       }
+
+      const after = this.worldBounds(this.node);
+      const anchorAfter = this.anchorPoint(after, this.activeAnchor());
+      this.node.x = this.node.x + (anchorBefore.x - anchorAfter.x);
+      this.node.y = this.node.y + (anchorBefore.y - anchorAfter.y);
 
       this.engine?.sceneGraph.notifyNodeChanged(this.node);
       return;

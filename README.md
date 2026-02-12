@@ -261,21 +261,31 @@ Tools follow a lifecycle pattern:
 onActivate() → [onPointerDown → onPointerMove → onPointerUp]* → onDeactivate()
 ```
 
-| Tool      | Key | Behavior                                            |
-| --------- | --- | --------------------------------------------------- |
-| Select    | V   | Click, shift-click, marquee rubber-band, drag-move  |
-| Rectangle | R   | Click + drag to create rectangle                    |
-| Ellipse   | O   | Click + drag to create ellipse                      |
-| Polygon   | —   | Click + drag, configurable side count               |
-| Star      | —   | Click + drag, configurable points & inner radius     |
-| Line      | L   | Click + drag, shift constrains to 45° increments    |
-| Arrow     | —   | Line with configurable arrowheads                   |
-| Pen       | P   | Click = sharp anchor, drag = smooth (Bézier handles)|
-| Text      | T   | Click to create text node                           |
-| Hand      | H   | Drag to pan viewport                                |
-| Zoom      | Z   | Click to zoom in, alt+click to zoom out             |
+| Tool      | Key       | Behavior                                              |
+| --------- | --------- | ----------------------------------------------------- |
+| Select    | V         | Click, shift-click, marquee rubber-band, drag-move   |
+| Hand      | H         | Drag to pan viewport                                  |
+| Scale     | K         | Dedicated transform mode with anchor-aware scaling    |
+| Frame     | F         | Click + drag to create frame                          |
+| Section   | Shift+S   | Click + drag to create section container              |
+| Slice     | X         | Click + drag to create export slice                   |
+| Rectangle | R         | Click + drag to create rectangle                      |
+| Ellipse   | O         | Click + drag to create ellipse                        |
+| Polygon   | —         | Click + drag, configurable side count                 |
+| Star      | —         | Click + drag, configurable points & inner radius      |
+| Line      | L         | Click + drag to draw line                             |
+| Arrow     | A         | Click + drag to draw arrow                            |
+| Image     | I         | Click to place image placeholder                      |
+| Video     | Shift+V   | Click to place video placeholder                      |
+| Pen       | P         | Click = sharp anchor, drag = smooth (Bézier handles) |
+| Pencil    | B         | Freehand drawing path                                 |
+| Text      | T         | Click to create/edit text                             |
+| Comment   | C         | Click to place comment note                           |
+| Zoom      | Z         | Click to zoom in, alt+click to zoom out               |
 
 The `ToolManagerService` (Angular) wraps the OOP tool system and exposes the active tool as a signal for reactive UI updates.
+
+Toolbar groups are organized Figma-style into: Selection, Frame/Section/Slice, Geometry (+ Image/Video), Pen/Pencil, Text, and Comment. The bottom toolbar also includes Draw/Design/Dev mode switching.
 
 ---
 
@@ -333,11 +343,20 @@ Available commands:
 | `Ctrl+G`          | Group           |
 | `Delete`          | Delete          |
 | `V`               | Select tool     |
+| `K`               | Scale tool      |
+| `F`               | Frame tool      |
+| `Shift+S`         | Section tool    |
+| `X`               | Slice tool      |
 | `R`               | Rectangle tool  |
 | `O`               | Ellipse tool    |
 | `L`               | Line tool       |
+| `A`               | Arrow tool      |
 | `P`               | Pen tool        |
+| `B`               | Pencil tool     |
 | `T`               | Text tool       |
+| `C`               | Comment tool    |
+| `I`               | Image tool      |
+| `Shift+V`         | Video tool      |
 | `H`               | Hand tool       |
 | `Z`               | Zoom tool       |
 | `Ctrl+=`          | Zoom in         |

@@ -1,17 +1,94 @@
-<div class="flex items-center justify-center py-2">
-  <div class="flex items-center gap-1 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-xl">
-    @for (tool of tools; track tool.type) {
-      <button
-        class="w-9 h-9 flex items-center justify-center rounded-lg transition-colors"
-        [class.bg-blue-600]="activeToolType() === tool.type"
-        [class.text-white]="activeToolType() === tool.type"
-        [class.text-zinc-400]="activeToolType() !== tool.type"
-        [class.hover:bg-zinc-700]="activeToolType() !== tool.type"
-        [title]="tool.label + (tool.shortcut ? ' (' + tool.shortcut + ')' : '')"
-        (click)="selectTool(tool.type)"
-      >
-        <span class="text-sm font-mono">{{ tool.icon }}</span>
-      </button>
+<div class="relative z-[80] flex items-center justify-center py-2 px-3 overflow-visible" (pointerdown)="openGroupId.set(null)">
+  <div class="relative z-[80] flex items-center gap-3 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-2xl max-w-full overflow-visible" (pointerdown)="$event.stopPropagation()">
+    <div class="flex items-center gap-2 overflow-x-auto overflow-y-visible pr-1">
+    @for (group of toolGroups; track group.id) {
+      <div class="relative">
+        @let primaryType = groupPrimaryTool(group.id);
+        <div
+          class="h-10 flex items-stretch rounded-xl border bg-zinc-900 border-zinc-800 overflow-hidden"
+          [class.ring-2]="openGroupId() === group.id"
+          [class.ring-blue-400]="openGroupId() === group.id"
+          [class.border-blue-400]="group.tools.includes(activeToolType())"
+        >
+          <button
+            type="button"
+            class="w-10 h-10 flex items-center justify-center transition-colors text-zinc-300 hover:bg-zinc-700"
+            [class.bg-blue-600]="group.tools.includes(activeToolType())"
+            [class.text-white]="group.tools.includes(activeToolType())"
+            [title]="toolTitle(primaryType)"
+            (pointerdown)="activateGroupTool(group.id, $event)"
+          >
+            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path [attr.d]="iconPath(primaryType)"></path>
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            class="w-6 h-10 flex items-center justify-center border-l border-zinc-700/80 transition-colors text-zinc-400 hover:bg-zinc-700"
+            [class.bg-zinc-700]="openGroupId() === group.id"
+            [class.text-white]="openGroupId() === group.id"
+            [title]="group.label"
+            (pointerdown)="toggleGroup(group.id, $event)"
+          >
+            <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 9l6 6 6-6"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
     }
+    </div>
+
+    <div class="w-px h-7 bg-zinc-700/70 shrink-0"></div>
+
+    <div class="flex items-center gap-1 px-1 py-1 bg-zinc-800 border border-zinc-700 rounded-xl shrink-0">
+      @for (mode of modes; track mode) {
+        <button
+          class="px-3 h-8 rounded-lg text-xs uppercase tracking-wide transition-colors"
+          [class.bg-blue-600]="activeMode() === mode"
+          [class.text-white]="activeMode() === mode"
+          [class.text-zinc-300]="activeMode() !== mode"
+          [class.hover:bg-zinc-700]="activeMode() !== mode"
+          (click)="setMode(mode)"
+        >
+          {{ mode }}
+        </button>
+      }
+    </div>
   </div>
+
+  @if (openGroupId(); as groupId) {
+    @let openGroup = groupById(groupId);
+    @if (openGroup) {
+      <div
+        class="fixed z-[200] min-w-[152px] p-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-lg"
+        [style.left.px]="dropdownLeft()"
+        [style.top.px]="dropdownTop()"
+        style="transform: translate(-50%, -100%);"
+        (pointerdown)="$event.stopPropagation()"
+      >
+        @for (toolType of openGroup.tools; track toolType) {
+          <button
+            type="button"
+            class="w-full h-9 px-2 flex items-center justify-between rounded-lg transition-colors"
+            [class.bg-blue-600]="activeToolType() === toolType"
+            [class.text-white]="activeToolType() === toolType"
+            [class.text-zinc-300]="activeToolType() !== toolType"
+            [class.hover:bg-zinc-700]="activeToolType() !== toolType"
+            [title]="toolTitle(toolType)"
+            (pointerdown)="selectToolFromMenu(toolType, $event)"
+          >
+            <span class="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path [attr.d]="iconPath(toolType)"></path>
+              </svg>
+              <span class="text-[11px]">{{ tool(toolType)?.label ?? toolType }}</span>
+            </span>
+            <span class="text-[10px] text-zinc-400">{{ tool(toolType)?.shortcut ?? '' }}</span>
+          </button>
+        }
+      </div>
+    }
+  }
 </div>
