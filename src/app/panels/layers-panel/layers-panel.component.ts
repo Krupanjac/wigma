@@ -1,6 +1,19 @@
-import { ChangeDetectionStrategy, Component, Input, NgZone, OnChanges, OnDestroy, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, Input, NgZone, OnChanges, OnDestroy, inject, signal } from '@angular/core';
 import { CanvasEngine } from '../../engine/canvas-engine';
 import { GroupNode } from '../../engine/scene-graph/group-node';
+import { MenuCommandsService } from '../menu-bar/menu-commands.service';
+
+interface SidebarMenuItem {
+  label: string;
+  shortcut?: string;
+  separator?: boolean;
+  action?: () => void;
+}
+
+interface SidebarMenuSection {
+  title: string;
+  items: SidebarMenuItem[];
+}
 
 interface LayerEntry {
   id: string;
@@ -26,6 +39,7 @@ interface LayerEntry {
 })
 export class LayersPanelComponent implements OnChanges, OnDestroy {
   private ngZone = inject(NgZone);
+  private menuCommands = inject(MenuCommandsService);
 
   @Input() engine: CanvasEngine | null = null;
 
@@ -35,6 +49,48 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
   readonly expandedIds = signal<Set<string>>(new Set());
   readonly editingId = signal<string | null>(null);
   readonly editingName = signal('');
+  readonly logoMenuOpen = signal(false);
+  readonly logoMenuSections: SidebarMenuSection[] = [
+    {
+      title: 'File',
+      items: [
+        { label: 'New Project', action: () => this.menuCommands.newProject() },
+        { label: 'Save to Browser', action: () => this.menuCommands.saveProjectToBrowser() },
+        { separator: true, label: '' },
+        { label: 'Export PNG', action: () => this.menuCommands.exportPNG() },
+        { label: 'Export JSON', action: () => this.menuCommands.exportJSON() },
+      ],
+    },
+    {
+      title: 'Edit',
+      items: [
+        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => this.menuCommands.undo() },
+        { label: 'Redo', shortcut: 'Ctrl+Shift+Z', action: () => this.menuCommands.redo() },
+        { separator: true, label: '' },
+        { label: 'Cut', shortcut: 'Ctrl+X', action: () => this.menuCommands.cut() },
+        { label: 'Copy', shortcut: 'Ctrl+C', action: () => this.menuCommands.copy() },
+        { label: 'Paste', shortcut: 'Ctrl+V', action: () => this.menuCommands.paste() },
+        { label: 'Delete', shortcut: 'Del', action: () => this.menuCommands.deleteSelection() },
+        { separator: true, label: '' },
+        { label: 'Select All', shortcut: 'Ctrl+A', action: () => this.menuCommands.selectAll() },
+      ],
+    },
+    {
+      title: 'View',
+      items: [
+        { label: 'Zoom In', shortcut: 'Ctrl+=', action: () => this.menuCommands.zoomIn() },
+        { label: 'Zoom Out', shortcut: 'Ctrl+-', action: () => this.menuCommands.zoomOut() },
+        { label: 'Zoom to 100%', shortcut: 'Ctrl+0', action: () => this.menuCommands.zoomTo100() },
+        { label: 'Zoom to Fit', shortcut: 'Ctrl+1', action: () => this.menuCommands.zoomToFit() },
+      ],
+    },
+    {
+      title: 'Arrange',
+      items: [
+        { label: 'Group', shortcut: 'Ctrl+G', action: () => this.menuCommands.group() },
+      ],
+    },
+  ];
 
   private allEntriesById = new Map<string, LayerEntry>();
   private unsubscribe: (() => void) | null = null;
@@ -85,6 +141,31 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
     this.unsubscribe?.();
     this.unsubscribeSelection?.();
     this.removeRenameRequestListener?.();
+  }
+
+  toggleLogoMenu(event: MouseEvent): void {
+    event.stopPropagation();
+    this.logoMenuOpen.update(v => !v);
+  }
+
+  closeLogoMenu(): void {
+    this.logoMenuOpen.set(false);
+  }
+
+  runLogoMenuAction(item: SidebarMenuItem, event: MouseEvent): void {
+    event.stopPropagation();
+    item.action?.();
+    this.closeLogoMenu();
+  }
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.closeLogoMenu();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.closeLogoMenu();
   }
 
   private refreshNodes(): void {

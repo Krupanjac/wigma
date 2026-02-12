@@ -5,6 +5,8 @@ import { StrokeSectionComponent } from './stroke-section/stroke-section.componen
 import { TextSectionComponent } from './text-section/text-section.component';
 import { CanvasEngine } from '../../engine/canvas-engine';
 import { BaseNode } from '../../engine/scene-graph/base-node';
+import { MenuCommandsService } from '../menu-bar/menu-commands.service';
+import { ProjectService } from '../../core/services/project.service';
 
 @Component({
   selector: 'app-properties-panel',
@@ -20,6 +22,9 @@ import { BaseNode } from '../../engine/scene-graph/base-node';
 })
 export class PropertiesPanelComponent implements OnChanges, OnDestroy {
   private ngZone = inject(NgZone);
+  private menuCommands = inject(MenuCommandsService);
+
+  readonly project = inject(ProjectService);
 
   readonly Math = Math;
 
@@ -106,5 +111,53 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
     const next = Math.max(0, Math.min(100, current + delta * step));
     node.opacity = next / 100;
     this.engine.sceneGraph.notifyNodeChanged(node);
+  }
+
+  createNewProject(): void {
+    this.menuCommands.newProject();
+  }
+
+  setProjectName(raw: string): void {
+    this.project.rename(raw);
+  }
+
+  setProjectDescription(raw: string): void {
+    this.project.setDescription(raw);
+  }
+
+  saveProject(): void {
+    this.menuCommands.saveProjectToBrowser();
+  }
+
+  exportProjectJson(): void {
+    const json = this.menuCommands.exportProjectJSON();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${this.project.document().name || 'wigma-project'}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  exportPng(): void {
+    this.menuCommands.exportPNG();
+  }
+
+  onImportProjectChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      if (!text) return;
+      this.menuCommands.importProjectJSON(text);
+      input.value = '';
+    };
+    reader.readAsText(file);
   }
 }

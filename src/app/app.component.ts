@@ -205,11 +205,17 @@ export class AppComponent implements OnInit, OnDestroy {
   };
 
   ngOnDestroy(): void {
+    this.project.saveToBrowser();
     this.engine?.dispose();
     this.keybinding.unregisterAll();
 
     window.removeEventListener('pointermove', this.onResizeMove);
     window.removeEventListener('pointerup', this.onResizeUp);
+  }
+
+  @HostListener('window:beforeunload')
+  onBeforeUnload(): void {
+    this.project.saveToBrowser();
   }
 
   @HostListener('document:contextmenu', ['$event'])

@@ -6,6 +6,7 @@ import { SceneNodeModel } from './scene-node.model';
 export interface DocumentModel {
   id: string;
   name: string;
+  description: string;
   version: string;
   createdAt: string;
   updatedAt: string;

@@ -99,4 +99,20 @@ export class MenuCommandsService {
   // ── Export ──────────────────────────────────────────────
   exportPNG(): void  { this.exportService.downloadPNG(); }
   exportJSON(): void { this.exportService.downloadJSON(); }
+
+  newProject(): void {
+    this.project.newProject();
+  }
+
+  saveProjectToBrowser(): void {
+    this.project.saveToBrowser();
+  }
+
+  importProjectJSON(json: string): void {
+    this.project.fromJSON(json);
+  }
+
+  exportProjectJSON(): string {
+    return this.project.toJSON();
+  }
 }
