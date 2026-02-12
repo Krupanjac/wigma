@@ -41,7 +41,7 @@
       <label
         class="h-7 cursor-pointer rounded border border-zinc-700 bg-zinc-800 px-2 text-[11px] text-zinc-200 hover:bg-zinc-700 inline-flex items-center justify-center">
         Import JSON
-        <input type="file" accept="application/json,.json" class="hidden" (change)="onImportProjectChange($event)" />
+        <input type="file" accept="application/json,.json,.json.gz,application/gzip" class="hidden" (change)="onImportProjectChange($event)" />
       </label>
       <button
         type="button"

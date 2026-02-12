@@ -638,8 +638,8 @@ export class ProjectService {
     try {
       const doc = this._document();
       const json = JSON.stringify(doc);
-      await this.idb.set(ProjectService.STORAGE_KEY, json);
-      plog('writeBrowserSnapshot — wrote', json.length, 'bytes, pages:', doc.nodes.length,
+      await this.idb.setCompressed(ProjectService.STORAGE_KEY, json);
+      plog('writeBrowserSnapshot — compressed & wrote', json.length, 'chars, pages:', doc.nodes.length,
            'total nodes:', countNodesDeep(doc.nodes));
     } catch (e) {
       console.error(LOG_PREFIX, 'writeBrowserSnapshot error:', e);
@@ -648,10 +648,10 @@ export class ProjectService {
 
   private async readBrowserSnapshot(): Promise<string | null> {
     try {
-      // Try IndexedDB first
-      const idbRaw = await this.idb.get(ProjectService.STORAGE_KEY);
+      // Try IndexedDB first (auto-detects compressed ArrayBuffer vs plain string)
+      const idbRaw = await this.idb.getDecompressed(ProjectService.STORAGE_KEY);
       if (idbRaw) {
-        plog('readBrowserSnapshot — found', idbRaw.length, 'bytes in IndexedDB');
+        plog('readBrowserSnapshot — found', idbRaw.length, 'chars in IndexedDB');
         return idbRaw;
       }
 

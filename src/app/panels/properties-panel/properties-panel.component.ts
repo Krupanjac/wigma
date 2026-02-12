@@ -145,13 +145,38 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
     const file = input.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      if (!text) return;
-      this.menuCommands.importProjectJSON(text);
-      input.value = '';
-    };
-    reader.readAsText(file);
+    const isGzip = file.name.endsWith('.gz');
+
+    if (isGzip) {
+      file.arrayBuffer().then(buffer => {
+        const source = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(buffer));
+            controller.close();
+          },
+        });
+        const decompressed = source.pipeThrough(
+          new DecompressionStream('gzip') as any
+        );
+        return new Response(decompressed).text();
+      }).then(text => {
+        if (!text) return;
+        this.menuCommands.importProjectJSON(text);
+        input.value = '';
+      }).catch(err => {
+        console.error('Failed to decompress .json.gz:', err);
+        alert('Import failed: could not decompress the file.');
+        input.value = '';
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = typeof reader.result === 'string' ? reader.result : '';
+        if (!text) return;
+        this.menuCommands.importProjectJSON(text);
+        input.value = '';
+      };
+      reader.readAsText(file);
+    }
   }
 }
