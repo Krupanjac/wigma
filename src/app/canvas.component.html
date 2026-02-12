@@ -3,5 +3,24 @@
   class="w-full h-full cursor-crosshair relative overflow-hidden"
   tabindex="0"
 >
+  @if (isTextEditing) {
+    <textarea
+      #canvasTextEditor
+      [value]="editingText"
+      (input)="onCanvasTextInput($any($event.target).value)"
+      (blur)="endCanvasTextEdit()"
+      class="absolute z-20 bg-transparent text-white outline-none border border-blue-500 rounded px-1 py-0.5 resize-none"
+      [style.left.px]="editorLeft"
+      [style.top.px]="editorTop"
+      [style.width.px]="editorWidth"
+      [style.height.px]="editorHeight"
+      [style.fontSize.px]="editorFontSize"
+      [style.fontFamily]="editorFontFamily"
+      [style.lineHeight]="editorLineHeight"
+      [style.color]="editorColor"
+      spellcheck="false"
+    ></textarea>
+  }
+
   <!-- PixiJS renders into this container -->
 </div>

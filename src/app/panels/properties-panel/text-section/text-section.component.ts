@@ -78,16 +78,40 @@ export class TextSectionComponent implements AfterViewInit, OnChanges {
 
   private tryFocusTextInput(): void {
     const node = this.textNode;
-    if (!node || this.lastFocusedNodeId === node.id) {
+    if (!node) {
+      this.lastFocusedNodeId = null;
+      return;
+    }
+
+    if (this.lastFocusedNodeId === node.id) {
       return;
     }
 
     queueMicrotask(() => {
       const input = this.textContentInput?.nativeElement;
       if (!input) return;
+
+      const active = document.activeElement;
+      if (this.isEditableElement(active) && active !== input) {
+        return;
+      }
+
       input.focus();
       input.select();
       this.lastFocusedNodeId = node.id;
     });
+  }
+
+  private isEditableElement(element: Element | null): element is HTMLElement {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (element.isContentEditable) {
+      return true;
+    }
+
+    const tag = element.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
   }
 }

@@ -14,10 +14,17 @@ export class TextTool extends BaseTool {
 
   override onPointerDown(event: PointerEventData): void {
     const node = new TextNode();
+    node.text = '';
     node.x = event.worldPosition.x;
     node.y = event.worldPosition.y;
     this.engine.sceneGraph.addNode(node, this.engine.activePage ?? undefined);
     this.engine.selection.select(node);
+    node.markRenderDirty();
+    node.markBoundsDirty();
     this.engine.sceneGraph.notifyNodeChanged(node);
+
+    window.dispatchEvent(new CustomEvent('wigma:text-edit-start', {
+      detail: { nodeId: node.id },
+    }));
   }
 }

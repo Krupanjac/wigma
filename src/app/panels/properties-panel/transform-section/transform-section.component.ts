@@ -3,6 +3,7 @@ import { CanvasEngine } from '../../../engine/canvas-engine';
 import { BaseNode } from '../../../engine/scene-graph/base-node';
 import { PolygonNode } from '../../../engine/scene-graph/polygon-node';
 import { StarNode } from '../../../engine/scene-graph/star-node';
+import { TextNode } from '../../../engine/scene-graph/text-node';
 import { Bounds } from '../../../shared/math/bounds';
 
 @Component({
@@ -58,6 +59,10 @@ export class TransformSectionComponent {
     return node?.type === 'star' ? (node as StarNode) : null;
   }
 
+  asText(node: BaseNode | null): TextNode | null {
+    return node?.type === 'text' ? (node as TextNode) : null;
+  }
+
   setNumber(
     key: 'x' | 'y' | 'width' | 'height' | 'rotation',
     raw: string
@@ -79,6 +84,28 @@ export class TransformSectionComponent {
     }
 
     if (key === 'width' || key === 'height') {
+      const text = this.asText(this.node);
+      if (text) {
+        const b = this.worldBounds(text);
+        const desired = Math.max(0.01, next);
+
+        if (key === 'width') {
+          text.width = desired;
+        } else {
+          const currentHeight = Math.max(1e-6, b.height);
+          const factor = desired / currentHeight;
+          text.fontSize = Math.max(1, text.fontSize * factor);
+          text.height = desired;
+        }
+
+        text.scaleX = Math.sign(text.scaleX) || 1;
+        text.scaleY = Math.sign(text.scaleY) || 1;
+        text.markRenderDirty();
+        text.markBoundsDirty();
+        this.engine?.sceneGraph.notifyNodeChanged(text);
+        return;
+      }
+
       const b = this.worldBounds(this.node);
       const desired = Math.max(0.01, next);
 

@@ -9,6 +9,7 @@ import { HANDLE_SIZE, ROTATION_HANDLE_DISTANCE, SNAP_THRESHOLD } from '@shared/c
 import { Bounds } from '@shared/math/bounds';
 import { Matrix2D } from '@shared/math/matrix2d';
 import { Guide } from '../engine/interaction/guide-state';
+import { TextNode } from '../engine/scene-graph/text-node';
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -16,6 +17,9 @@ interface ResizeState {
   nodeId: string;
   startScaleX: number;
   startScaleY: number;
+  startWidth: number;
+  startHeight: number;
+  startFontSize: number | null;
   startX: number;
   startY: number;
   startWorldInv: Matrix2D;
@@ -411,8 +415,31 @@ export class SelectTool extends BaseTool {
 
     node.x = this.resizeState.startX;
     node.y = this.resizeState.startY;
-    node.scaleX = scaleX;
-    node.scaleY = scaleY;
+
+    if (node.type === 'text') {
+      const textNode = node as TextNode;
+      const baseScaleX = Math.max(1e-6, Math.abs(this.resizeState.startScaleX));
+      const baseScaleY = Math.max(1e-6, Math.abs(this.resizeState.startScaleY));
+      const factorX = Math.max(1e-4, Math.abs(scaleX) / baseScaleX);
+      const factorY = Math.max(1e-4, Math.abs(scaleY) / baseScaleY);
+
+      if (hasX) {
+        textNode.width = Math.max(1, this.resizeState.startWidth * factorX);
+      }
+      if (hasY && this.resizeState.startFontSize !== null) {
+        const scaleFactor = hasX ? Math.sqrt(factorX * factorY) : factorY;
+        textNode.fontSize = Math.max(1, this.resizeState.startFontSize * scaleFactor);
+        textNode.height = Math.max(1, this.resizeState.startHeight * factorY);
+      }
+
+      node.scaleX = Math.sign(this.resizeState.startScaleX) || 1;
+      node.scaleY = Math.sign(this.resizeState.startScaleY) || 1;
+      node.markRenderDirty();
+      node.markBoundsDirty();
+    } else {
+      node.scaleX = scaleX;
+      node.scaleY = scaleY;
+    }
 
     const anchorNowWorld = node.worldMatrix.apply(this.resizeState.anchorLocal);
     const anchorDelta = this.resizeState.anchorWorld.sub(anchorNowWorld);
@@ -548,6 +575,9 @@ export class SelectTool extends BaseTool {
       nodeId: node.id,
       startScaleX: node.scaleX,
       startScaleY: node.scaleY,
+      startWidth: node.width,
+      startHeight: node.height,
+      startFontSize: node.type === 'text' ? (node as TextNode).fontSize : null,
       startX: node.x,
       startY: node.y,
       startWorldInv,
