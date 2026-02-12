@@ -136,9 +136,15 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
       });
     });
 
+    let selectionPending = false;
     const syncSelection = () => {
-      const ids = new Set(this.engine?.selection.selectedNodeIds ?? []);
-      this.ngZone.run(() => this.selectedIds.set(ids));
+      if (selectionPending) return;
+      selectionPending = true;
+      queueMicrotask(() => {
+        selectionPending = false;
+        const ids = new Set(this.engine?.selection.selectedNodeIds ?? []);
+        this.ngZone.run(() => this.selectedIds.set(ids));
+      });
     };
     syncSelection();
     this.unsubscribeSelection = this.engine.selection.onChange(syncSelection);

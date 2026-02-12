@@ -244,6 +244,9 @@ export class RenderManager {
 
   // ── Selected edge outlines ────────────────────────────────
 
+  /** Max individual edge outlines to draw. Above this, only the combined bounding rect is shown. */
+  private static readonly EDGE_OUTLINE_CAP = 50;
+
   private updateSelectedEdgeOutlines(): void {
     const cam = this.viewport.camera;
     const currentIds = this.selection.selectedNodeIds; // string[]
@@ -255,6 +258,14 @@ export class RenderManager {
     }
 
     const zoomChanged = cam.zoom !== this._lastEdgeZoom;
+
+    // When selection is large, skip individual edge outlines entirely —
+    // the combined bounding-box overlay is sufficient and avoids
+    // creating hundreds of separate Graphics objects / GPU draw calls.
+    if (currentIds.length > RenderManager.EDGE_OUTLINE_CAP) {
+      this.clearAllEdgeOutlines();
+      return;
+    }
 
     // Remove outlines for nodes no longer selected
     if (selectionChanged) {
@@ -310,6 +321,16 @@ export class RenderManager {
       gfx.clear();
       this.drawNodeOutline(gfx, node, strokeW, SELECTION_COLOR, SELECTION_EDGE_ALPHA);
     }
+  }
+
+  private clearAllEdgeOutlines(): void {
+    for (const [id, gfx] of this.edgeGfxMap) {
+      const obj = this.displayObjects.get(id);
+      if (obj) obj.removeChild(gfx);
+      gfx.clear();
+      graphicsPool.release(gfx);
+    }
+    this.edgeGfxMap.clear();
   }
 
   private arraysEqual(a: string[], b: string[]): boolean {

@@ -68,6 +68,8 @@ export class SelectTool extends BaseTool {
   private moveExcludeIds = new Set<string>();
   private marqueeBaseSelectionIds = new Set<string>();
   private marqueePreviewSelectionIds = new Set<string>();
+  private marqueeRafPending = false;
+  private lastMarqueeShiftKey = false;
 
   constructor(private engine: CanvasEngine) {
     super();
@@ -213,7 +215,16 @@ export class SelectTool extends BaseTool {
       case 'marquee':
         this.selectionBox.update(event.worldPosition);
         this.engine.renderManager.setMarqueeBounds(this.selectionBox.bounds);
-        this.updateMarqueePreview(event.shiftKey);
+        this.lastMarqueeShiftKey = event.shiftKey;
+        if (!this.marqueeRafPending) {
+          this.marqueeRafPending = true;
+          requestAnimationFrame(() => {
+            this.marqueeRafPending = false;
+            if (this.mode === 'marquee') {
+              this.updateMarqueePreview(this.lastMarqueeShiftKey);
+            }
+          });
+        }
         break;
     }
   }
@@ -245,6 +256,7 @@ export class SelectTool extends BaseTool {
     this.moveExcludeIds.clear();
     this.marqueeBaseSelectionIds.clear();
     this.marqueePreviewSelectionIds.clear();
+    this.marqueeRafPending = false;
     this.engine.guides.clear();
     this.engine.renderManager.setMarqueeBounds(null);
     this.dragHandler.end();
@@ -253,25 +265,19 @@ export class SelectTool extends BaseTool {
 
   private updateMarqueePreview(shiftKey: boolean): void {
     const ids = this.engine.spatialIndex.queryRange(this.selectionBox.bounds);
-    const hitNodes = ids
-      .map(id => this.engine.sceneGraph.getNode(id))
-      .filter((n): n is BaseNode => n !== undefined && n.visible && !n.locked && this.engine.isNodeInActivePage(n) && !this.engine.isPageNode(n));
 
-    const nextNodes: BaseNode[] = [];
     const nextIds = new Set<string>();
 
     if (shiftKey) {
       for (const id of this.marqueeBaseSelectionIds) {
-        const node = this.engine.sceneGraph.getNode(id);
-        if (!node || !node.visible || node.locked || !this.engine.isNodeInActivePage(node) || this.engine.isPageNode(node)) continue;
-        nextNodes.push(node);
         nextIds.add(id);
       }
     }
 
-    for (const node of hitNodes) {
-      if (nextIds.has(node.id)) continue;
-      nextNodes.push(node);
+    for (const id of ids) {
+      if (nextIds.has(id)) continue;
+      const node = this.engine.sceneGraph.getNode(id);
+      if (!node || !node.visible || node.locked || !this.engine.isNodeInActivePage(node) || this.engine.isPageNode(node)) continue;
       nextIds.add(node.id);
     }
 
@@ -280,6 +286,13 @@ export class SelectTool extends BaseTool {
     }
 
     this.marqueePreviewSelectionIds = nextIds;
+
+    // Build nodes array only when selection actually changed
+    const nextNodes: BaseNode[] = [];
+    for (const id of nextIds) {
+      const node = this.engine.sceneGraph.getNode(id);
+      if (node) nextNodes.push(node);
+    }
     this.engine.selection.selectMultiple(nextNodes);
   }
 
