@@ -351,14 +351,10 @@ Available commands:
 
 | Technology     | Version | Purpose                              |
 | -------------- | ------- | ------------------------------------ |
-| Angular        | 19.2    | UI framework, signals, DI, routing   |
+| Angular        | 21.1.4    | UI framework, signals, DI, routing   |
 | PixiJS         | 8.16    | GPU-accelerated 2D canvas rendering  |
 | Tailwind CSS   | 4.1     | Utility-first styling (PostCSS)      |
 | rbush          | 4.0     | R-tree spatial index                 |
-| TypeScript     | 5.7     | Type safety throughout               |
+| TypeScript     | 5.9.3     | Type safety throughout               |
 
 ---
-
-## License
-
-MIT

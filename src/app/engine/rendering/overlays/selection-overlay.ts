@@ -1,4 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
+import { graphicsPool } from '../../pools/graphics-pool';
 import {
   HANDLE_FILL,
   HANDLE_SIZE,
@@ -16,7 +17,7 @@ import {
  */
 export class SelectionOverlay {
   private visible: boolean = false;
-  private gfx: Graphics = new Graphics();
+  private gfx: Graphics = graphicsPool.acquire();
 
   attach(stage: Container): void {
     stage.addChild(this.gfx);
@@ -84,6 +85,6 @@ export class SelectionOverlay {
 
   dispose(): void {
     this.visible = false;
-    this.gfx.destroy();
+    graphicsPool.release(this.gfx);
   }
 }

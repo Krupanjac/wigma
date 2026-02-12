@@ -25,6 +25,10 @@ export class KeybindingService implements OnDestroy {
   /** Start listening for keyboard events. Call once after bootstrap. */
   init(): void {
     this.listener = (e: KeyboardEvent) => {
+      if (this.isEditableTarget(e.target)) {
+        return;
+      }
+
       const combo = this.eventToCombo(e);
       const binding = this.bindings.get(combo);
       if (binding) {
@@ -73,5 +77,18 @@ export class KeybindingService implements OnDestroy {
     }
 
     return parts.join('+');
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (target.isContentEditable) {
+      return true;
+    }
+
+    const tag = target.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
   }
 }

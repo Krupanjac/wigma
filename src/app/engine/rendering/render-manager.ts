@@ -11,6 +11,8 @@ import { GuideState } from '../interaction/guide-state';
 import { GuideOverlay } from './overlays/guide-overlay';
 import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, MARQUEE_FILL_ALPHA, MARQUEE_FILL_COLOR, MARQUEE_STROKE_ALPHA, MARQUEE_STROKE_COLOR, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_STROKE_WIDTH } from '@shared/constants';
 import { Bounds } from '@shared/math/bounds';
+import { graphicsPool } from '../pools/graphics-pool';
+import { textPool } from '../pools/object-pool';
 
 /**
  * RenderManager — creates and owns the PixiJS Application,
@@ -22,25 +24,18 @@ export class RenderManager {
   private app: Application | null = null;
   private worldContainer: Container | null = null;
   private displayObjects = new Map<string, Container>();
+  private displayNodeTypes = new Map<string, BaseNode['type']>();
   private unsubscribe: (() => void) | null = null;
 
   private selectionOverlay = new SelectionOverlay();
   private guideOverlay = new GuideOverlay();
-  private marqueeGfx = new Graphics();
+  private marqueeGfx = graphicsPool.acquire();
   private marqueeBounds: Bounds | null = null;
-  private sizeBadgeBg = new Graphics();
-  private sizeBadgeText = new PixiText({
-    text: '',
-    style: {
-      fontSize: 11,
-      fill: 0xffffff,
-      fontFamily: 'Inter, system-ui, sans-serif',
-      fontWeight: '500',
-    },
-  });
+  private sizeBadgeBg = graphicsPool.acquire();
+  private sizeBadgeText = textPool.acquire();
   private sizeBadgeKey = '';
 
-  private singleSelectionGfx = new Graphics();
+  private singleSelectionGfx = graphicsPool.acquire();
   private singleSelectionTargetId: string | null = null;
 
   constructor(
@@ -51,6 +46,12 @@ export class RenderManager {
     private guides: GuideState
   ) {
     this.rendererRegistry = new NodeRendererRegistry();
+    this.sizeBadgeText.style = {
+      fontSize: 11,
+      fill: 0xffffff,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontWeight: '500',
+    };
 
     // Listen for scene events
     this.unsubscribe = this.sceneGraph.on(event => {
@@ -386,6 +387,7 @@ export class RenderManager {
 
     const displayObj = renderer.create(node) as Container;
     this.displayObjects.set(node.id, displayObj);
+    this.displayNodeTypes.set(node.id, node.type);
     this.worldContainer.addChild(displayObj);
 
     // Initial sync
@@ -405,8 +407,17 @@ export class RenderManager {
     const displayObj = this.displayObjects.get(id);
     if (displayObj && this.worldContainer) {
       this.worldContainer.removeChild(displayObj);
-      displayObj.destroy();
+
+      const nodeType = this.displayNodeTypes.get(id);
+      const renderer = nodeType ? this.rendererRegistry.get(nodeType) : null;
+      if (renderer) {
+        renderer.destroy(displayObj);
+      } else {
+        displayObj.destroy();
+      }
+
       this.displayObjects.delete(id);
+      this.displayNodeTypes.delete(id);
     }
   }
 
@@ -423,15 +434,22 @@ export class RenderManager {
   /** Dispose all display objects and the PixiJS app. */
   dispose(): void {
     this.unsubscribe?.();
-    for (const [, obj] of this.displayObjects) {
-      obj.destroy();
+    for (const [id, obj] of this.displayObjects) {
+      const nodeType = this.displayNodeTypes.get(id);
+      const renderer = nodeType ? this.rendererRegistry.get(nodeType) : null;
+      if (renderer) {
+        renderer.destroy(obj);
+      } else {
+        obj.destroy();
+      }
     }
     this.displayObjects.clear();
+    this.displayNodeTypes.clear();
     this.detachSingleSelection();
-    this.singleSelectionGfx.destroy();
-    this.marqueeGfx.destroy();
-    this.sizeBadgeBg.destroy();
-    this.sizeBadgeText.destroy();
+    graphicsPool.release(this.singleSelectionGfx);
+    graphicsPool.release(this.marqueeGfx);
+    graphicsPool.release(this.sizeBadgeBg);
+    textPool.release(this.sizeBadgeText);
     this.selectionOverlay.dispose();
     this.guideOverlay.dispose();
     this.app?.destroy(true);

@@ -3,6 +3,7 @@ import { Camera } from '../../viewport/camera';
 import { SNAP_LINE_COLOR, SNAP_LINE_OPACITY } from '@shared/constants';
 import { Guide } from '../../interaction/guide-state';
 import { Vec2 } from '@shared/math/vec2';
+import { graphicsPool } from '../../pools/graphics-pool';
 
 /**
  * Guide overlay — renders snap/alignment guides.
@@ -10,7 +11,7 @@ import { Vec2 } from '@shared/math/vec2';
  */
 export class GuideOverlay {
   private guides: Guide[] = [];
-  private gfx: Graphics = new Graphics();
+  private gfx: Graphics = graphicsPool.acquire();
 
   attach(stage: Container): void {
     stage.addChild(this.gfx);
@@ -48,6 +49,6 @@ export class GuideOverlay {
 
   dispose(): void {
     this.guides = [];
-    this.gfx.destroy();
+    graphicsPool.release(this.gfx);
   }
 }
