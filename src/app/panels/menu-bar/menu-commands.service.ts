@@ -60,10 +60,11 @@ export class MenuCommandsService {
     const nodes = this.engine.selection.selectedNodes;
     if (nodes.length === 0) return;
 
+    const sg = this.engine!.sceneGraph;
     const commands = nodes.map(n =>
-      new DeleteNodeCommand(this.engine!.sceneGraph, n)
+      new DeleteNodeCommand(sg, n)
     );
-    this.history.execute(new BatchCommand(commands, 'Delete'));
+    this.history.execute(new BatchCommand(commands, 'Delete', sg));
     this.engine.selection.clearSelection();
   }
 

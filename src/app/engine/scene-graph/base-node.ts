@@ -247,13 +247,25 @@ export abstract class BaseNode {
 
   private transformBoundsToWorld(local: Bounds): Bounds {
     const wm = this._worldMatrix;
-    const corners = [
-      wm.apply(new Vec2(local.minX, local.minY)),
-      wm.apply(new Vec2(local.maxX, local.minY)),
-      wm.apply(new Vec2(local.maxX, local.maxY)),
-      wm.apply(new Vec2(local.minX, local.maxY)),
-    ];
-    return Bounds.fromPoints(corners);
+    // Inline matrix application to avoid 4× Vec2 allocations per call
+    const x0 = local.minX, y0 = local.minY;
+    const x1 = local.maxX, y1 = local.maxY;
+
+    const ax = wm.a * x0 + wm.c * y0 + wm.tx;
+    const ay = wm.b * x0 + wm.d * y0 + wm.ty;
+    const bx = wm.a * x1 + wm.c * y0 + wm.tx;
+    const by = wm.b * x1 + wm.d * y0 + wm.ty;
+    const cx = wm.a * x1 + wm.c * y1 + wm.tx;
+    const cy = wm.b * x1 + wm.d * y1 + wm.ty;
+    const dx = wm.a * x0 + wm.c * y1 + wm.tx;
+    const dy = wm.b * x0 + wm.d * y1 + wm.ty;
+
+    return new Bounds(
+      Math.min(ax, bx, cx, dx),
+      Math.min(ay, by, cy, dy),
+      Math.max(ax, bx, cx, dx),
+      Math.max(ay, by, cy, dy),
+    );
   }
 
   // ── Dirty flag management ──

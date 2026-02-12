@@ -99,6 +99,24 @@ export class CanvasEngine {
             this.selection.notifyUpdated();
           }
           break;
+        case 'nodes-changed': {
+          // Batch path: update spatial index in one sweep, skip alignment
+          // for dragged nodes (they're excluded from snap queries by
+          // moveExcludeIds and will be re-indexed on pointerUp).
+          const batchUpdates: Array<{ id: string; bounds: import('@shared/math/bounds').Bounds }> = [];
+          for (const node of event.nodes) {
+            if (node.dirty.bounds) {
+              batchUpdates.push({ id: node.id, bounds: node.worldBounds });
+            }
+          }
+          if (batchUpdates.length > 0) {
+            this.spatialIndex.updateBatch(batchUpdates);
+          }
+          if (this.selection.hasSelection) {
+            this.selection.notifyUpdated();
+          }
+          break;
+        }
         case 'hierarchy-changed':
           if (this.autoPageSelectionSuspendCount === 0) {
             this.ensureActivePageSelected();

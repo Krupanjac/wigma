@@ -71,6 +71,46 @@ export class SpatialIndex {
   }
 
   /**
+   * Batch-update multiple items' bounds.
+   * More efficient than N individual update() calls because it
+   * updates the in-place item coordinates and rebuilds the tree once.
+   * O(n log n) for rebuild vs O(n × log_M n) for individual updates.
+   */
+  updateBatch(updates: Array<{ id: string; bounds: Bounds }>): void {
+    if (updates.length === 0) return;
+
+    // For small batches, individual updates are fine
+    if (updates.length < 10) {
+      for (const { id, bounds } of updates) {
+        this.update(id, bounds);
+      }
+      return;
+    }
+
+    // For large batches, update in-place and rebuild the tree
+    for (const { id, bounds } of updates) {
+      const item = this.itemMap.get(id);
+      if (item) {
+        item.minX = bounds.minX;
+        item.minY = bounds.minY;
+        item.maxX = bounds.maxX;
+        item.maxY = bounds.maxY;
+      } else {
+        const newItem: RBushItem = {
+          minX: bounds.minX, minY: bounds.minY,
+          maxX: bounds.maxX, maxY: bounds.maxY,
+          id,
+        };
+        this.itemMap.set(id, newItem);
+      }
+    }
+
+    // Rebuild the tree from all items
+    this.tree.clear();
+    this.tree.load(Array.from(this.itemMap.values()));
+  }
+
+  /**
    * Range query — find all items whose bounds intersect the query rectangle.
    * Used for viewport culling and marquee selection.
    * O(log_M n + k), k = number of results.

@@ -8,6 +8,7 @@ export type SceneEvent =
   | { type: 'node-added'; node: BaseNode }
   | { type: 'node-removed'; node: BaseNode }
   | { type: 'node-changed'; node: BaseNode }
+  | { type: 'nodes-changed'; nodes: BaseNode[] }
   | { type: 'node-reordered'; node: BaseNode }
   | { type: 'hierarchy-changed' };
 
@@ -27,9 +28,34 @@ export class SceneGraphManager {
   /** Event listeners. */
   private listeners: SceneEventHandler[] = [];
 
+  /** Batch depth counter — when > 0, hierarchy-changed events are deferred. */
+  private _batchDepth = 0;
+  private _pendingHierarchyChanged = false;
+
   constructor() {
     this.root = new GroupNode('Root');
     this.nodeMap.set(this.root.id, this.root);
+  }
+
+  /**
+   * Begin a batch operation. While batched, `hierarchy-changed` events
+   * are coalesced and emitted once when the outermost batch ends.
+   * Nest-safe: maintains a depth counter.
+   */
+  beginBatch(): void {
+    this._batchDepth++;
+  }
+
+  /**
+   * End a batch operation. When the outermost batch ends, a single
+   * `hierarchy-changed` event is emitted if any were deferred.
+   */
+  endBatch(): void {
+    this._batchDepth = Math.max(0, this._batchDepth - 1);
+    if (this._batchDepth === 0 && this._pendingHierarchyChanged) {
+      this._pendingHierarchyChanged = false;
+      this.emit({ type: 'hierarchy-changed' });
+    }
   }
 
   /** Subscribe to scene events. */
@@ -99,7 +125,7 @@ export class SceneGraphManager {
 
     this.registerNode(node);
     this.emitNodeAddedRecursive(node);
-    this.emit({ type: 'hierarchy-changed' });
+    this.emitHierarchyChanged();
   }
 
   /** Remove a node from the scene graph. */
@@ -112,7 +138,7 @@ export class SceneGraphManager {
 
     this.emitNodeRemovedRecursive(node);
     this.unregisterNode(node);
-    this.emit({ type: 'hierarchy-changed' });
+    this.emitHierarchyChanged();
   }
 
   /** Move a node to a new parent or position. */
@@ -135,12 +161,21 @@ export class SceneGraphManager {
     }
 
     this.emit({ type: 'node-reordered', node });
-    this.emit({ type: 'hierarchy-changed' });
+    this.emitHierarchyChanged();
   }
 
   /** Notify that a node's properties changed. */
   notifyNodeChanged(node: BaseNode): void {
     this.emit({ type: 'node-changed', node });
+  }
+
+  /**
+   * Batch-notify that multiple nodes changed (e.g. during drag).
+   * Emits a single 'nodes-changed' event instead of N individual ones.
+   * Listeners should update indices once for the whole batch.
+   */
+  notifyNodesChanged(nodes: BaseNode[]): void {
+    this.emit({ type: 'nodes-changed', nodes });
   }
 
   /** Get a flat ordered list for rendering (depth-first pre-order). */
@@ -187,11 +222,22 @@ export class SceneGraphManager {
     this.emit({ type: 'node-removed', node });
   }
 
+  /** Emit hierarchy-changed, or defer it when inside a batch. */
+  private emitHierarchyChanged(): void {
+    if (this._batchDepth > 0) {
+      this._pendingHierarchyChanged = true;
+    } else {
+      this.emit({ type: 'hierarchy-changed' });
+    }
+  }
+
   /** Clear all nodes except root. */
   clear(): void {
+    this.beginBatch();
     const children = [...this.root.children];
     for (const child of children) {
       this.removeNode(child);
     }
+    this.endBatch();
   }
 }

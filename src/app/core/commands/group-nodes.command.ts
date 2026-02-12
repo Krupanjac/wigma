@@ -30,6 +30,7 @@ export class GroupNodesCommand implements ICommand {
   }
 
   execute(): void {
+    this.sceneGraph.beginBatch();
     // Add group to scene at the position of the first node's parent
     const firstNode = this.sceneGraph.getNode(this.nodeIds[0]);
     const parent = firstNode?.parent ?? this.sceneGraph.root;
@@ -42,9 +43,11 @@ export class GroupNodesCommand implements ICommand {
         this.sceneGraph.moveNode(node, this.group);
       }
     }
+    this.sceneGraph.endBatch();
   }
 
   undo(): void {
+    this.sceneGraph.beginBatch();
     // Move nodes back to original parents
     for (const id of this.nodeIds) {
       const node = this.sceneGraph.getNode(id);
@@ -59,5 +62,6 @@ export class GroupNodesCommand implements ICommand {
 
     // Remove the group
     this.sceneGraph.removeNode(this.group);
+    this.sceneGraph.endBatch();
   }
 }

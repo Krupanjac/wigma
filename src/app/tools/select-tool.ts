@@ -224,6 +224,17 @@ export class SelectTool extends BaseTool {
       this.updateMarqueePreview(event.shiftKey);
     }
 
+    // Re-sync alignment index for nodes that were batch-moved
+    // (skipped during drag for performance)
+    if (this.moveExcludeIds.size > 0) {
+      for (const id of this.moveExcludeIds) {
+        const node = this.engine.sceneGraph.getNode(id);
+        if (node && node.parent !== this.engine.sceneGraph.root) {
+          this.engine.alignmentIndex.upsertNode(node);
+        }
+      }
+    }
+
     this.mode = 'idle';
     this.hitNode = null;
     this.activeResizeHandle = null;
@@ -375,11 +386,14 @@ export class SelectTool extends BaseTool {
 
     this.engine.guides.setGuides(guides);
 
-    for (const node of this.engine.selection.selectedNodes) {
+    // Batch-move: set positions without emitting per-node events
+    const movedNodes = this.engine.selection.selectedNodes;
+    for (const node of movedNodes) {
       node.x = node.x + delta.x;
       node.y = node.y + delta.y;
-      this.engine.sceneGraph.notifyNodeChanged(node);
     }
+    // Single batch notification — one spatial + alignment index update sweep
+    this.engine.sceneGraph.notifyNodesChanged(movedNodes);
 
     this.lastEffectiveWorldPos = event.worldPosition.add(this.pointerCompensation);
   }

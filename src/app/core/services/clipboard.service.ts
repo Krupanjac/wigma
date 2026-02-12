@@ -62,10 +62,11 @@ export class ClipboardService {
     this.copy(nodes);
     if (!this.engine) return;
 
+    const sg = this.engine!.sceneGraph;
     const commands = nodes.map(n =>
-      new DeleteNodeCommand(this.engine!.sceneGraph, n)
+      new DeleteNodeCommand(sg, n)
     );
-    this.history.execute(new BatchCommand(commands, 'Cut'));
+    this.history.execute(new BatchCommand(commands, 'Cut', sg));
   }
 
   paste(): BaseNode[] {
@@ -82,19 +83,20 @@ export class ClipboardService {
       return clone;
     });
 
+    const sg = this.engine!.sceneGraph;
     const commands = clones.map((node, index) => {
       const entry = this.buffer[index];
       const sourceParent = entry.parentId
-        ? this.engine!.sceneGraph.getNode(entry.parentId)
+        ? sg.getNode(entry.parentId)
         : undefined;
 
       const targetParentId = sourceParent && this.engine!.isNodeInActivePage(sourceParent)
         ? sourceParent.id
         : activePage.id;
 
-      return new CreateNodeCommand(this.engine!.sceneGraph, node, targetParentId);
+      return new CreateNodeCommand(sg, node, targetParentId);
     });
-    this.history.execute(new BatchCommand(commands, 'Paste'));
+    this.history.execute(new BatchCommand(commands, 'Paste', sg));
 
     return clones;
   }
