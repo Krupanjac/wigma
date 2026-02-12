@@ -8,6 +8,38 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
-  <app-root></app-root>
+  <app-root>
+    <!-- Pre-bootstrap loader (removed automatically when Angular hydrates) -->
+    <style>
+      .preboot-loader {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px;
+        background: #09090b;
+      }
+      .preboot-bars { display: flex; align-items: flex-end; gap: 4px; height: 40px; }
+      .preboot-bars span {
+        width: 5px; border-radius: 2px;
+        background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%);
+        animation: pb-pulse 1s ease-in-out infinite;
+      }
+      .preboot-bars span:nth-child(1) { height: 12px; animation-delay: 0s; }
+      .preboot-bars span:nth-child(2) { height: 20px; animation-delay: .12s; }
+      .preboot-bars span:nth-child(3) { height: 32px; animation-delay: .24s; }
+      .preboot-bars span:nth-child(4) { height: 20px; animation-delay: .36s; }
+      .preboot-bars span:nth-child(5) { height: 12px; animation-delay: .48s; }
+      @keyframes pb-pulse {
+        0%,100% { transform: scaleY(.4); opacity: .5; }
+        50%     { transform: scaleY(1);  opacity: 1; }
+      }
+      .preboot-msg {
+        margin: 0; font-size: 13px; font-weight: 500; color: #a1a1aa;
+        letter-spacing: .03em; font-family: 'Inter', system-ui, sans-serif;
+      }
+    </style>
+    <div class="preboot-loader">
+      <div class="preboot-bars"><span></span><span></span><span></span><span></span><span></span></div>
+      <p class="preboot-msg">Loading Wigma…</p>
+    </div>
+  </app-root>
 </body>
 </html>

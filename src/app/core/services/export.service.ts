@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { CanvasEngine } from '../../engine/canvas-engine';
 import { ExportRenderer, ExportOptions, PageContentBounds } from '../../engine/rendering/export-renderer';
+import { LoaderService } from './loader.service';
 
 /**
  * ExportService — exports the active page content to PNG, WebP, or JSON.
@@ -12,6 +13,7 @@ import { ExportRenderer, ExportOptions, PageContentBounds } from '../../engine/r
   providedIn: 'root'
 })
 export class ExportService {
+  private readonly loader = inject(LoaderService);
   private engine: CanvasEngine | null = null;
   private exportRenderer: ExportRenderer | null = null;
 
@@ -46,11 +48,13 @@ export class ExportService {
     const page = this.engine!.activePage;
     if (!page) throw new Error('No active page');
 
-    return this.exportRenderer!.renderPage(page, {
-      format: 'png',
-      scale: 2,
-      ...options,
-    });
+    return this.loader.wrap('Exporting PNG…', () =>
+      this.exportRenderer!.renderPage(page, {
+        format: 'png',
+        scale: 2,
+        ...options,
+      })
+    );
   }
 
   /**
@@ -71,12 +75,14 @@ export class ExportService {
     const page = this.engine!.activePage;
     if (!page) throw new Error('No active page');
 
-    return this.exportRenderer!.renderPage(page, {
-      format: 'webp',
-      quality: 0.92,
-      scale: 2,
-      ...options,
-    });
+    return this.loader.wrap('Exporting WebP…', () =>
+      this.exportRenderer!.renderPage(page, {
+        format: 'webp',
+        quality: 0.92,
+        scale: 2,
+        ...options,
+      })
+    );
   }
 
   async downloadWebP(filename?: string, options: ExportOptions = {}): Promise<void> {

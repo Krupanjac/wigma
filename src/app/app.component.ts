@@ -13,6 +13,7 @@ import { LayersPanelComponent } from './panels/layers-panel/layers-panel.compone
 import { PropertiesPanelComponent } from './panels/properties-panel/properties-panel.component';
 import { MenuBarComponent } from './panels/menu-bar/menu-bar.component';
 import { ContextMenuComponent } from './panels/context-menu/context-menu.component';
+import { LoaderComponent } from './loader.component';
 import { CanvasEngine } from './engine/canvas-engine';
 import { ToolManagerService } from './tools/tool-manager.service';
 import { HistoryService } from './core/services/history.service';
@@ -20,6 +21,7 @@ import { ProjectService } from './core/services/project.service';
 import { ClipboardService } from './core/services/clipboard.service';
 import { ExportService } from './core/services/export.service';
 import { KeybindingService } from './core/services/keybinding.service';
+import { LoaderService } from './core/services/loader.service';
 import { MenuCommandsService } from './panels/menu-bar/menu-commands.service';
 import { ContextMenuService } from './panels/context-menu/context-menu.service';
 import { Vec2 } from './shared/math/vec2';
@@ -33,6 +35,7 @@ import { Vec2 } from './shared/math/vec2';
     PropertiesPanelComponent,
     MenuBarComponent,
     ContextMenuComponent,
+    LoaderComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
@@ -45,6 +48,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private clipboard = inject(ClipboardService);
   private exportService = inject(ExportService);
   private keybinding = inject(KeybindingService);
+  private loader = inject(LoaderService);
   private menuCommands = inject(MenuCommandsService);
   private contextMenu = inject(ContextMenuService);
 
@@ -70,7 +74,13 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly PROPS_MAX = 520;
   private readonly COLLAPSE_THRESHOLD = 120;
 
+  /** Dismiss function for the initial loading overlay. */
+  private dismissInitLoader: (() => void) | null = null;
+
   ngOnInit(): void {
+    // Show loading overlay until canvas is ready
+    this.dismissInitLoader = this.loader.show('Initializing workspace…');
+
     // Create engine outside Angular zone
     this.ngZone.runOutsideAngular(() => {
       this.engine = new CanvasEngine();
@@ -119,7 +129,19 @@ export class AppComponent implements OnInit, OnDestroy {
       { combo: 'ctrl+0', action: () => this.menuCommands.zoomTo100() },
       { combo: 'ctrl+1', action: () => this.menuCommands.zoomToFit() },
     ]);
+
+    // Dismiss init loader when canvas is ready
+    window.addEventListener('wigma:canvas-ready', this.onCanvasReady);
   }
+
+  private onCanvasReady = (): void => {
+    window.removeEventListener('wigma:canvas-ready', this.onCanvasReady);
+    // Small delay to allow the first render frame to paint
+    requestAnimationFrame(() => {
+      this.dismissInitLoader?.();
+      this.dismissInitLoader = null;
+    });
+  };
 
   startResize(side: 'pages' | 'properties', event: PointerEvent): void {
     if (event.button !== 0) return;
@@ -205,6 +227,8 @@ export class AppComponent implements OnInit, OnDestroy {
   };
 
   ngOnDestroy(): void {
+    this.dismissInitLoader?.();
+    window.removeEventListener('wigma:canvas-ready', this.onCanvasReady);
     this.project.saveToBrowser();
     this.engine?.dispose();
     this.keybinding.unregisterAll();

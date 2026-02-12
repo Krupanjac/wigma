@@ -67,6 +67,9 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     this.ngZone.runOutsideAngular(async () => {
       await this.engine!.init(container);
 
+      // Canvas & engine fully initialized — dismiss global init loader
+      window.dispatchEvent(new Event('wigma:canvas-ready'));
+
       // Watch for resize
       this.resizeObserver = new ResizeObserver(entries => {
         for (const entry of entries) {

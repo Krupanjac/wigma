@@ -6,6 +6,11 @@ import { CreateNodeCommand } from '../commands/create-node.command';
 import { DeleteNodeCommand } from '../commands/delete-node.command';
 import { BatchCommand } from '../commands/batch-command';
 
+interface ClipboardEntry {
+  node: BaseNode;
+  parentId: string | null;
+}
+
 /**
  * ClipboardService — cut/copy/paste for scene nodes.
  *
@@ -18,7 +23,7 @@ import { BatchCommand } from '../commands/batch-command';
 export class ClipboardService {
   private history = inject(HistoryService);
 
-  private buffer: BaseNode[] = [];
+  private buffer: ClipboardEntry[] = [];
   private pasteOffset = 20;
   private pasteCount = 0;
 
@@ -31,7 +36,24 @@ export class ClipboardService {
   }
 
   copy(nodes: BaseNode[]): void {
-    this.buffer = nodes.map(n => n.clone());
+    const unique = Array.from(new Map(nodes.map(n => [n.id, n])).values());
+    const selectedIds = new Set(unique.map(n => n.id));
+    const topLevel = unique.filter(node => {
+      let current = node.parent;
+      while (current) {
+        if (selectedIds.has(current.id)) {
+          return false;
+        }
+        current = current.parent;
+      }
+      return true;
+    });
+
+    this.buffer = topLevel.map(n => ({
+      node: n.clone(),
+      parentId: n.parent?.id ?? null,
+    }));
+
     this.pasteCount = 0;
     this.hasContent.set(this.buffer.length > 0);
   }
@@ -48,19 +70,30 @@ export class ClipboardService {
 
   paste(): BaseNode[] {
     if (!this.engine || this.buffer.length === 0) return [];
+    const activePage = this.engine.activePage;
+    if (!activePage) return [];
 
     this.pasteCount++;
     const offset = this.pasteOffset * this.pasteCount;
-    const clones = this.buffer.map(n => {
-      const clone = n.clone();
+    const clones = this.buffer.map(entry => {
+      const clone = entry.node.clone();
       clone.x += offset;
       clone.y += offset;
       return clone;
     });
 
-    const commands = clones.map(n =>
-      new CreateNodeCommand(this.engine!.sceneGraph, n)
-    );
+    const commands = clones.map((node, index) => {
+      const entry = this.buffer[index];
+      const sourceParent = entry.parentId
+        ? this.engine!.sceneGraph.getNode(entry.parentId)
+        : undefined;
+
+      const targetParentId = sourceParent && this.engine!.isNodeInActivePage(sourceParent)
+        ? sourceParent.id
+        : activePage.id;
+
+      return new CreateNodeCommand(this.engine!.sceneGraph, node, targetParentId);
+    });
     this.history.execute(new BatchCommand(commands, 'Paste'));
 
     return clones;
