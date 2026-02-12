@@ -4,15 +4,51 @@
   <app-menu-bar class="shrink-0" />
 
   <!-- Main Workspace -->
-  <div class="flex flex-1 min-h-0">
-    <!-- Left: Pages Panel -->
-    <app-layers-panel class="shrink-0 w-60 border-r border-zinc-800" [engine]="engine" />
+  <div class="relative flex-1 min-h-0 overflow-hidden">
+    <!-- Canvas always fills the workspace (sidebars overlay it) -->
+    <app-canvas class="absolute inset-0" [engine]="engine" />
 
-    <!-- Center: Canvas -->
-    <app-canvas class="flex-1 min-w-0" [engine]="engine" />
+    <!-- Pages sidebar overlay (resizable) -->
+    <div
+      class="absolute inset-y-0 left-0 z-20 overflow-hidden"
+      [style.width.px]="pagesCollapsed() ? 0 : pagesWidth()"
+    >
+      @if (!pagesCollapsed()) {
+        <div class="h-full w-full border-r border-zinc-800">
+          <app-layers-panel class="h-full w-full" [engine]="engine" />
+        </div>
+      }
+    </div>
 
-    <!-- Right: Properties Panel -->
-    <app-properties-panel class="shrink-0 w-72 border-l border-zinc-800" [engine]="engine" />
+    <!-- Pages splitter overlay -->
+    <div
+      class="absolute inset-y-0 z-30 w-2 cursor-col-resize bg-transparent hover:bg-zinc-800/40"
+      [style.left.px]="pagesCollapsed() ? 0 : pagesWidth()"
+      (pointerdown)="startResize('pages', $event)"
+      (dblclick)="togglePages()"
+      title="Drag to resize • Double-click to toggle"
+    ></div>
+
+    <!-- Properties splitter overlay -->
+    <div
+      class="absolute inset-y-0 z-30 w-2 cursor-col-resize bg-transparent hover:bg-zinc-800/40"
+      [style.right.px]="propertiesCollapsed() ? 0 : propertiesWidth()"
+      (pointerdown)="startResize('properties', $event)"
+      (dblclick)="toggleProperties()"
+      title="Drag to resize • Double-click to toggle"
+    ></div>
+
+    <!-- Properties sidebar overlay (resizable) -->
+    <div
+      class="absolute inset-y-0 right-0 z-20 overflow-hidden"
+      [style.width.px]="propertiesCollapsed() ? 0 : propertiesWidth()"
+    >
+      @if (!propertiesCollapsed()) {
+        <div class="h-full w-full border-l border-zinc-800">
+          <app-properties-panel class="h-full w-full" [engine]="engine" />
+        </div>
+      }
+    </div>
   </div>
 
   <!-- Bottom: Tools Dock -->

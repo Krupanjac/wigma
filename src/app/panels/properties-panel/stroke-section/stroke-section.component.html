@@ -12,20 +12,26 @@
     </label>
   </div>
   <div class="flex items-center gap-2">
-    <label class="relative w-9 h-9 rounded-lg border border-zinc-600 cursor-pointer overflow-hidden">
+    <button
+      type="button"
+      class="flex-none relative w-8 h-8 rounded-md border border-zinc-600 cursor-pointer overflow-hidden bg-zinc-800 hover:border-zinc-500"
+      (click)="strokeColorInput.click()"
+      aria-label="Pick stroke color"
+    >
       <div class="absolute inset-0" [style.background]="node ? colorToCss(node.stroke.color) : 'transparent'"></div>
-      <input
-        type="color"
-        class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-        [value]="node ? colorToHex(node.stroke.color) : '#000000'"
-        (input)="setStrokePickerHex($any($event.target).value)"
-      />
-    </label>
+    </button>
+    <input
+      #strokeColorInput
+      type="color"
+      class="sr-only"
+      [value]="node ? colorToHex(node.stroke.color) : '#000000'"
+      (input)="setStrokePickerHex($any($event.target).value)"
+    />
     <input
       type="text"
       [value]="node ? colorToHex(node.stroke.color) : ''"
       (change)="setStrokeHex($any($event.target).value)"
-      class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white flex-1 focus:border-blue-500 outline-none font-mono"
+      class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-white flex-1 min-w-0 focus:border-blue-500 outline-none font-mono h-8"
     />
 
     <div class="flex items-center">
@@ -34,12 +40,12 @@
         [value]="node ? node.stroke.width : 0"
         min="0"
         (change)="setStrokeWidth($any($event.target).value)"
-        class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-16 h-9 focus:border-blue-500 outline-none text-center"
+        class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-[11px] text-white w-14 h-8 focus:border-blue-500 outline-none text-center"
       />
       <div class="flex flex-col">
         <button
           type="button"
-          class="w-7 h-[18px] flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 rounded-tr-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
+          class="w-6 h-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 rounded-tr-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
           (click)="nudgeStrokeWidth(1, $event)"
           title="Increase (Shift = x10)"
           aria-label="Increase stroke width"
@@ -48,7 +54,7 @@
         </button>
         <button
           type="button"
-          class="w-7 h-[18px] flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 border-t-0 rounded-br-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
+          class="w-6 h-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 border-l-0 border-t-0 rounded-br-lg hover:bg-zinc-700 active:bg-zinc-600 text-zinc-200 leading-none"
           (click)="nudgeStrokeWidth(-1, $event)"
           title="Decrease (Shift = x10)"
           aria-label="Decrease stroke width"

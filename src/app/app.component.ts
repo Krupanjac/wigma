@@ -47,6 +47,25 @@ export class AppComponent implements OnInit, OnDestroy {
   engine: CanvasEngine | null = null;
   title = 'wigma';
 
+  // Sidebars (Pages / Properties)
+  readonly pagesWidth = signal(240);
+  readonly propertiesWidth = signal(288);
+  readonly pagesCollapsed = signal(false);
+  readonly propertiesCollapsed = signal(false);
+
+  private lastPagesWidth = 240;
+  private lastPropertiesWidth = 288;
+
+  private resizing: null | { side: 'pages' | 'properties'; startX: number; startWidth: number; pointerId: number } = null;
+  private rafPending = false;
+  private queuedClientX: number | null = null;
+
+  private readonly PAGES_MIN = 180;
+  private readonly PAGES_MAX = 420;
+  private readonly PROPS_MIN = 240;
+  private readonly PROPS_MAX = 520;
+  private readonly COLLAPSE_THRESHOLD = 120;
+
   ngOnInit(): void {
     // Create engine outside Angular zone
     this.ngZone.runOutsideAngular(() => {
@@ -88,8 +107,94 @@ export class AppComponent implements OnInit, OnDestroy {
     ]);
   }
 
+  startResize(side: 'pages' | 'properties', event: PointerEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+
+    const startWidth = side === 'pages'
+      ? (this.pagesCollapsed() ? this.lastPagesWidth : this.pagesWidth())
+      : (this.propertiesCollapsed() ? this.lastPropertiesWidth : this.propertiesWidth());
+
+    this.resizing = { side, startX: event.clientX, startWidth, pointerId: event.pointerId };
+    this.queuedClientX = event.clientX;
+
+    window.addEventListener('pointermove', this.onResizeMove, { passive: false });
+    window.addEventListener('pointerup', this.onResizeUp, { passive: true });
+  }
+
+  togglePages(): void {
+    const next = !this.pagesCollapsed();
+    if (next) {
+      this.lastPagesWidth = this.pagesWidth();
+    } else {
+      this.pagesWidth.set(this.lastPagesWidth);
+    }
+    this.pagesCollapsed.set(next);
+  }
+
+  toggleProperties(): void {
+    const next = !this.propertiesCollapsed();
+    if (next) {
+      this.lastPropertiesWidth = this.propertiesWidth();
+    } else {
+      this.propertiesWidth.set(this.lastPropertiesWidth);
+    }
+    this.propertiesCollapsed.set(next);
+  }
+
+  private onResizeMove = (event: PointerEvent): void => {
+    if (!this.resizing) return;
+    if (event.pointerId !== this.resizing.pointerId) return;
+    event.preventDefault();
+
+    this.queuedClientX = event.clientX;
+    if (this.rafPending) return;
+    this.rafPending = true;
+
+    requestAnimationFrame(() => {
+      this.rafPending = false;
+      if (!this.resizing || this.queuedClientX === null) return;
+
+      const dx = this.queuedClientX - this.resizing.startX;
+      if (this.resizing.side === 'pages') {
+        const proposed = this.resizing.startWidth + dx;
+        if (proposed <= this.COLLAPSE_THRESHOLD) {
+          this.pagesCollapsed.set(true);
+          return;
+        }
+        this.pagesCollapsed.set(false);
+        const clamped = Math.max(this.PAGES_MIN, Math.min(this.PAGES_MAX, proposed));
+        this.pagesWidth.set(clamped);
+        this.lastPagesWidth = clamped;
+      } else {
+        const proposed = this.resizing.startWidth - dx;
+        if (proposed <= this.COLLAPSE_THRESHOLD) {
+          this.propertiesCollapsed.set(true);
+          return;
+        }
+        this.propertiesCollapsed.set(false);
+        const clamped = Math.max(this.PROPS_MIN, Math.min(this.PROPS_MAX, proposed));
+        this.propertiesWidth.set(clamped);
+        this.lastPropertiesWidth = clamped;
+      }
+    });
+  };
+
+  private onResizeUp = (event: PointerEvent): void => {
+    if (!this.resizing) return;
+    if (event.pointerId !== this.resizing.pointerId) return;
+
+    this.resizing = null;
+    this.queuedClientX = null;
+    window.removeEventListener('pointermove', this.onResizeMove);
+    window.removeEventListener('pointerup', this.onResizeUp);
+  };
+
   ngOnDestroy(): void {
     this.engine?.dispose();
     this.keybinding.unregisterAll();
+
+    window.removeEventListener('pointermove', this.onResizeMove);
+    window.removeEventListener('pointerup', this.onResizeUp);
   }
 }
