@@ -1,62 +1,127 @@
 import { Injectable } from '@angular/core';
 import { CanvasEngine } from '../../engine/canvas-engine';
+import { ExportRenderer, ExportOptions, PageContentBounds } from '../../engine/rendering/export-renderer';
 
 /**
- * ExportService — exports the canvas to PNG, SVG, or JSON.
+ * ExportService — exports the active page content to PNG, WebP, or JSON.
+ *
+ * Uses ExportRenderer for high-quality off-screen rendering that captures
+ * only the page content region (not the infinite canvas background or overlays).
  */
 @Injectable({
   providedIn: 'root'
 })
 export class ExportService {
   private engine: CanvasEngine | null = null;
+  private exportRenderer: ExportRenderer | null = null;
 
   init(engine: CanvasEngine): void {
     this.engine = engine;
+    this.exportRenderer = new ExportRenderer(engine.sceneGraph, engine.renderManager);
   }
 
-  /** Export the full canvas as a PNG data URL. */
-  async exportPNG(scale: number = 2): Promise<string> {
-    if (!this.engine) throw new Error('Engine not initialized');
+  // ── Page content bounds ────────────────────────────────────
 
-    const app = this.engine.renderManager.getApp() as { canvas?: HTMLCanvasElement } | null;
-    if (!app?.canvas) throw new Error('PixiJS app not available');
-
-    return app.canvas.toDataURL('image/png');
+  /**
+   * Get the content bounds of the active page.
+   * This is the "virtual transform box" of all elements on the page.
+   */
+  getActivePageContentBounds(): PageContentBounds {
+    this.assertReady();
+    const page = this.engine!.activePage;
+    if (!page) throw new Error('No active page');
+    return this.exportRenderer!.computePageContentBounds(page);
   }
 
-  /** Trigger a PNG download in the browser. */
-  async downloadPNG(filename: string = 'wigma-export.png'): Promise<void> {
-    const dataUrl = await this.exportPNG();
-    this.downloadDataUrl(dataUrl, filename);
+  // ── PNG export ─────────────────────────────────────────────
+
+  /**
+   * Export the active page content as a high-quality PNG data URL.
+   *
+   * @param options Export options (scale, padding, background, format, quality)
+   * @returns Base64-encoded data URL of the rendered image
+   */
+  async exportPNG(options: ExportOptions = {}): Promise<string> {
+    this.assertReady();
+    const page = this.engine!.activePage;
+    if (!page) throw new Error('No active page');
+
+    return this.exportRenderer!.renderPage(page, {
+      format: 'png',
+      scale: 2,
+      ...options,
+    });
   }
 
-  /** Export the scene graph as JSON. */
+  /**
+   * Trigger a PNG download of the active page content.
+   */
+  async downloadPNG(filename?: string, options: ExportOptions = {}): Promise<void> {
+    const pageName = this.engine?.activePage?.name ?? 'page';
+    const name = filename ?? `${this.sanitizeFilename(pageName)}.png`;
+
+    const dataUrl = await this.exportPNG(options);
+    this.downloadDataUrl(dataUrl, name);
+  }
+
+  // ── WebP export ────────────────────────────────────────────
+
+  async exportWebP(options: ExportOptions = {}): Promise<string> {
+    this.assertReady();
+    const page = this.engine!.activePage;
+    if (!page) throw new Error('No active page');
+
+    return this.exportRenderer!.renderPage(page, {
+      format: 'webp',
+      quality: 0.92,
+      scale: 2,
+      ...options,
+    });
+  }
+
+  async downloadWebP(filename?: string, options: ExportOptions = {}): Promise<void> {
+    const pageName = this.engine?.activePage?.name ?? 'page';
+    const name = filename ?? `${this.sanitizeFilename(pageName)}.webp`;
+
+    const dataUrl = await this.exportWebP(options);
+    this.downloadDataUrl(dataUrl, name);
+  }
+
+  // ── JSON export ────────────────────────────────────────────
+
+  /**
+   * Export the full scene graph as JSON (uses ProjectService serialization).
+   */
   exportJSON(): string {
-    if (!this.engine) throw new Error('Engine not initialized');
-    const nodes = this.engine.sceneGraph.getAllNodes();
+    this.assertReady();
+    const nodes = this.engine!.sceneGraph.getAllNodes();
     return JSON.stringify(
-      nodes.map(n => ({
-        id: n.id,
-        type: n.type,
-        name: n.name,
-        x: n.x,
-        y: n.y,
-        width: n.width,
-        height: n.height,
-        rotation: n.rotation,
-      })),
+      nodes
+        .filter(n => n !== this.engine!.sceneGraph.root)
+        .map(n => n.toJSON()),
       null,
       2
     );
   }
 
-  /** Trigger a JSON download. */
   downloadJSON(filename: string = 'wigma-export.json'): void {
     const json = this.exportJSON();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     this.downloadDataUrl(url, filename);
     URL.revokeObjectURL(url);
+  }
+
+  // ── Private helpers ────────────────────────────────────────
+
+  private assertReady(): void {
+    if (!this.engine || !this.exportRenderer) {
+      throw new Error('ExportService not initialized — call init(engine) first');
+    }
+  }
+
+  private sanitizeFilename(name: string): string {
+    return name.replace(/[^a-zA-Z0-9_\-. ]/g, '_').trim() || 'export';
   }
 
   private downloadDataUrl(url: string, filename: string): void {
