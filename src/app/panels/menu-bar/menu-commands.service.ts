@@ -102,7 +102,7 @@ export class MenuCommandsService {
 
   // ── Export ──────────────────────────────────────────────
   exportPNG(): void  { this.exportService.downloadPNG(); }
-  exportJSON(): void { this.exportService.downloadJSON(); }
+  exportJSON(): void { void this.exportService.downloadJSON(); }
 
   newProject(): void {
     this.project.newProject();

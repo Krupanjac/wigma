@@ -7,6 +7,7 @@ import { CanvasEngine } from '../../engine/canvas-engine';
 import { BaseNode } from '../../engine/scene-graph/base-node';
 import { MenuCommandsService } from '../menu-bar/menu-commands.service';
 import { ProjectService } from '../../core/services/project.service';
+import { ExportService } from '../../core/services/export.service';
 
 @Component({
   selector: 'app-properties-panel',
@@ -22,6 +23,7 @@ import { ProjectService } from '../../core/services/project.service';
 export class PropertiesPanelComponent implements OnChanges, OnDestroy {
   private ngZone = inject(NgZone);
   private menuCommands = inject(MenuCommandsService);
+  private exportService = inject(ExportService);
 
   readonly project = inject(ProjectService);
 
@@ -130,15 +132,8 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
 
   exportProjectJson(): void {
     const json = this.menuCommands.exportProjectJSON();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${this.project.document().name || 'wigma-project'}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+    const filename = this.project.document().name || 'wigma-project';
+    void this.exportService.downloadProjectJSON(json, filename);
   }
 
   exportPng(): void {

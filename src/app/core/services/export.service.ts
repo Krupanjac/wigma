@@ -8,6 +8,10 @@ import { LoaderService } from './loader.service';
  *
  * Uses ExportRenderer for high-quality off-screen rendering that captures
  * only the page content region (not the infinite canvas background or overlays).
+ *
+ * When the scene contains image or video nodes (with large embedded
+ * base64 data-URLs), the JSON export is gzip-compressed and saved as
+ * `.json.gz` to reduce file size.
  */
 @Injectable({
   providedIn: 'root'
@@ -65,7 +69,7 @@ export class ExportService {
     const name = filename ?? `${this.sanitizeFilename(pageName)}.png`;
 
     const dataUrl = await this.exportPNG(options);
-    this.downloadDataUrl(dataUrl, name);
+    this.downloadBlobUrl(dataUrl, name);
   }
 
   // ── WebP export ────────────────────────────────────────────
@@ -90,13 +94,13 @@ export class ExportService {
     const name = filename ?? `${this.sanitizeFilename(pageName)}.webp`;
 
     const dataUrl = await this.exportWebP(options);
-    this.downloadDataUrl(dataUrl, name);
+    this.downloadBlobUrl(dataUrl, name);
   }
 
   // ── JSON export ────────────────────────────────────────────
 
   /**
-   * Export the full scene graph as JSON (uses ProjectService serialization).
+   * Export the full scene graph as a plain JSON string.
    */
   exportJSON(): string {
     this.assertReady();
@@ -110,15 +114,88 @@ export class ExportService {
     );
   }
 
-  downloadJSON(filename: string = 'wigma-export.json'): void {
+  /**
+   * Download the scene graph as JSON.
+   * When media nodes are present the output is gzip-compressed (.json.gz).
+   */
+  async downloadJSON(filename: string = 'wigma-export'): Promise<void> {
+    this.assertReady();
     const json = this.exportJSON();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    this.downloadDataUrl(url, filename);
-    URL.revokeObjectURL(url);
+    await this.downloadJsonString(json, filename);
+  }
+
+  /**
+   * Download a full project document (DocumentModel) as JSON.
+   * Gzip-compresses when the data contains embedded media data-URLs.
+   *
+   * @param json  Pre-serialized JSON string from ProjectService.toJSON()
+   * @param filename  Base filename (without extension)
+   */
+  async downloadProjectJSON(json: string, filename: string = 'wigma-project'): Promise<void> {
+    await this.downloadJsonString(json, filename);
   }
 
   // ── Private helpers ────────────────────────────────────────
+
+  /**
+   * Shared download logic: gzip-compresses to `.json.gz` when the scene
+   * has media nodes, otherwise saves plain `.json`.
+   */
+  private async downloadJsonString(json: string, filename: string): Promise<void> {
+    const compress = this.hasMediaNodes();
+    const baseName = this.stripExtension(filename);
+
+    if (compress) {
+      const blob = await this.loader.wrap('Compressing JSON…', () =>
+        this.compressGzip(json)
+      );
+      const url = URL.createObjectURL(blob);
+      this.downloadBlobUrl(url, baseName + '.json.gz');
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      this.downloadBlobUrl(url, baseName + '.json');
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  /**
+   * Returns true when any node in the scene graph is an image or video.
+   */
+  private hasMediaNodes(): boolean {
+    const nodes = this.engine!.sceneGraph.getAllNodes();
+    return nodes.some(n => n.type === 'image' || n.type === 'video');
+  }
+
+  /**
+   * Gzip-compress a string using the Compression Streams API.
+   * Uses a pull-based ReadableStream that feeds 1 MB text chunks on demand,
+   * piped through CompressionStream. This avoids both OOM (no single huge
+   * allocation) and backpressure deadlocks (pull-based flow control).
+   */
+  private compressGzip(data: string): Promise<Blob> {
+    const encoder = new TextEncoder();
+    const CHUNK = 1 << 20; // 1 MB of characters per chunk
+    let offset = 0;
+
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= data.length) {
+          controller.close();
+          return;
+        }
+        const slice = data.slice(offset, offset + CHUNK);
+        offset += CHUNK;
+        controller.enqueue(encoder.encode(slice));
+      },
+    });
+
+    const compressed = source.pipeThrough(
+      new CompressionStream('gzip') as any
+    );
+    return new Response(compressed).blob();
+  }
 
   private assertReady(): void {
     if (!this.engine || !this.exportRenderer) {
@@ -130,7 +207,11 @@ export class ExportService {
     return name.replace(/[^a-zA-Z0-9_\-. ]/g, '_').trim() || 'export';
   }
 
-  private downloadDataUrl(url: string, filename: string): void {
+  private stripExtension(name: string): string {
+    return name.replace(/\.(json|json\.gz|wigma)$/i, '');
+  }
+
+  private downloadBlobUrl(url: string, filename: string): void {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
