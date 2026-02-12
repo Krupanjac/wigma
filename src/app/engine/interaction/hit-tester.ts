@@ -22,7 +22,8 @@ import { HIT_TOLERANCE, PATH_HIT_EXPAND } from '@shared/constants';
 export class HitTester {
   constructor(
     private sceneGraph: SceneGraphManager,
-    private spatialIndex: SpatialIndex
+    private spatialIndex: SpatialIndex,
+    private isNodeInActivePage: (node: BaseNode) => boolean = () => true
   ) {}
 
   /**
@@ -43,6 +44,7 @@ export class HitTester {
       const node = this.sceneGraph.getNode(id);
       if (!node || !node.visible || node.locked) continue;
       if (node === this.sceneGraph.root) continue;
+      if (!this.isNodeInActivePage(node)) continue;
 
       if (this.narrowPhaseTest(node, worldPos, tolerance)) {
         const order = this.computeGlobalRenderOrder(node);
@@ -67,6 +69,7 @@ export class HitTester {
       const node = this.sceneGraph.getNode(id);
       if (!node || !node.visible) continue;
       if (node === this.sceneGraph.root) continue;
+      if (!this.isNodeInActivePage(node)) continue;
 
       if (this.narrowPhaseTest(node, worldPos, tolerance)) {
         results.push(node);

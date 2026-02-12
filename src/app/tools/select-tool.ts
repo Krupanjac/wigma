@@ -243,7 +243,7 @@ export class SelectTool extends BaseTool {
     const ids = this.engine.spatialIndex.queryRange(this.selectionBox.bounds);
     const hitNodes = ids
       .map(id => this.engine.sceneGraph.getNode(id))
-      .filter((n): n is BaseNode => n !== undefined && n.visible && !n.locked);
+      .filter((n): n is BaseNode => n !== undefined && n.visible && !n.locked && this.engine.isNodeInActivePage(n));
 
     const nextNodes: BaseNode[] = [];
     const nextIds = new Set<string>();
@@ -251,7 +251,7 @@ export class SelectTool extends BaseTool {
     if (shiftKey) {
       for (const id of this.marqueeBaseSelectionIds) {
         const node = this.engine.sceneGraph.getNode(id);
-        if (!node || !node.visible || node.locked) continue;
+        if (!node || !node.visible || node.locked || !this.engine.isNodeInActivePage(node)) continue;
         nextNodes.push(node);
         nextIds.add(id);
       }

@@ -9,6 +9,7 @@ import { SnapEngine } from './interaction/snap-engine';
 import { GroupNode } from './scene-graph/group-node';
 import { AlignmentIndex } from './interaction/alignment-index';
 import { GuideState } from './interaction/guide-state';
+import { BaseNode } from './scene-graph/base-node';
 
 /**
  * CanvasEngine — the main entry point for the pure OOP engine layer.
@@ -35,6 +36,8 @@ export class CanvasEngine {
   readonly alignmentIndex: AlignmentIndex;
   readonly guides: GuideState;
 
+  private activePageNodeIds = new Set<string>();
+
   private running: boolean = false;
   private animationFrameId: number = 0;
 
@@ -47,9 +50,10 @@ export class CanvasEngine {
     this.alignmentIndex = new AlignmentIndex();
     this.guides = new GuideState();
     this.interaction = new InteractionManager(this.viewport);
-    this.hitTester = new HitTester(this.sceneGraph, this.spatialIndex);
+    this.hitTester = new HitTester(this.sceneGraph, this.spatialIndex, node => this.isNodeInActivePage(node));
     this.renderManager = new RenderManager(
-      this.sceneGraph, this.spatialIndex, this.viewport, this.selection, this.guides
+      this.sceneGraph, this.spatialIndex, this.viewport, this.selection, this.guides,
+      node => this.isNodeInActivePage(node)
     );
 
     // Add default Page 1
@@ -58,6 +62,7 @@ export class CanvasEngine {
     page1.height = 0;
     this.sceneGraph.addNode(page1);
     this.activePageId = page1.id;
+    this.rebuildActivePageNodeIds();
 
     // Wire scene events to spatial index + alignment index
     this.sceneGraph.on(event => {
@@ -92,6 +97,9 @@ export class CanvasEngine {
             this.selection.notifyUpdated();
           }
           break;
+        case 'hierarchy-changed':
+          this.rebuildActivePageNodeIds();
+          break;
       }
     });
   }
@@ -109,7 +117,31 @@ export class CanvasEngine {
     const node = this.sceneGraph.getNode(id);
     if (!node || node.type !== 'group') return;
     if (node.parent !== this.sceneGraph.root) return;
+    if (this.activePageId === id) return;
     this.activePageId = id;
+    this.selection.clearSelection();
+    this.guides.clear();
+    this.rebuildActivePageNodeIds();
+  }
+
+  isNodeInActivePage(node: BaseNode): boolean {
+    return this.activePageNodeIds.has(node.id);
+  }
+
+  private rebuildActivePageNodeIds(): void {
+    this.activePageNodeIds.clear();
+
+    const active = this.activePage;
+    if (!active) return;
+
+    const stack: BaseNode[] = [active];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      this.activePageNodeIds.add(current.id);
+      for (const child of current.children) {
+        stack.push(child);
+      }
+    }
   }
 
   /**

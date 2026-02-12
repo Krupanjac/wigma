@@ -16,7 +16,7 @@
   <div class="flex-1 overflow-y-auto">
     @for (entry of nodes(); track entry.id) {
       <div
-        class="flex items-center gap-1 px-2 py-1.5 text-sm transition-colors"
+        class="flex items-center gap-1 px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800/80"
         data-layer-entry="true"
         [attr.data-layer-id]="entry.id"
         [attr.data-layer-kind]="entry.kind"

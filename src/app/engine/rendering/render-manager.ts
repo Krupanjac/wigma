@@ -43,7 +43,8 @@ export class RenderManager {
     private spatialIndex: SpatialIndex,
     private viewport: ViewportManager,
     private selection: SelectionManager,
-    private guides: GuideState
+    private guides: GuideState,
+    private isNodeInActivePage: (node: BaseNode) => boolean
   ) {
     this.rendererRegistry = new NodeRendererRegistry();
     this.sizeBadgeText.style = {
@@ -122,7 +123,7 @@ export class RenderManager {
       displayObj.rotation = node.rotation;
       displayObj.scale.set(node.scaleX, node.scaleY);
       displayObj.alpha = node.opacity;
-      displayObj.visible = node.visible;
+      displayObj.visible = node.visible && this.isNodeInActivePage(node);
 
       // Re-draw shape only when visual properties changed
       if (node.dirty.render) {
@@ -400,7 +401,7 @@ export class RenderManager {
     displayObj.rotation = node.rotation;
     displayObj.scale.set(node.scaleX, node.scaleY);
     displayObj.alpha = node.opacity;
-    displayObj.visible = node.visible;
+    displayObj.visible = node.visible && this.isNodeInActivePage(node);
   }
 
   private onNodeRemoved(id: string): void {
