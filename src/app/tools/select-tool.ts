@@ -8,6 +8,7 @@ import { Vec2 } from '@shared/math/vec2';
 import { HANDLE_SIZE, ROTATION_HANDLE_DISTANCE, SNAP_THRESHOLD } from '@shared/constants';
 import { Bounds } from '@shared/math/bounds';
 import { Matrix2D } from '@shared/math/matrix2d';
+import { Guide } from '../engine/interaction/guide-state';
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -293,6 +294,7 @@ export class SelectTool extends BaseTool {
 
     let snapOffsetX = 0;
     let snapGuideX: number | null = null;
+    let snapGuideXRefId: string | null = null;
     const xCandidates = [proposed.minX, centerX, proposed.maxX];
     for (const c of xCandidates) {
       const best = this.engine.alignmentIndex.nearestX(c, tol, this.moveExcludeIds);
@@ -301,11 +303,13 @@ export class SelectTool extends BaseTool {
       if (snapGuideX === null || Math.abs(off) < Math.abs(snapOffsetX)) {
         snapOffsetX = off;
         snapGuideX = best.value;
+        snapGuideXRefId = best.id;
       }
     }
 
     let snapOffsetY = 0;
     let snapGuideY: number | null = null;
+    let snapGuideYRefId: string | null = null;
     const yCandidates = [proposed.minY, centerY, proposed.maxY];
     for (const c of yCandidates) {
       const best = this.engine.alignmentIndex.nearestY(c, tol, this.moveExcludeIds);
@@ -314,6 +318,7 @@ export class SelectTool extends BaseTool {
       if (snapGuideY === null || Math.abs(off) < Math.abs(snapOffsetY)) {
         snapOffsetY = off;
         snapGuideY = best.value;
+        snapGuideYRefId = best.id;
       }
     }
 
@@ -327,9 +332,37 @@ export class SelectTool extends BaseTool {
     // Keep pointer and object movement coherent while snapping
     this.pointerCompensation = this.pointerCompensation.add(new Vec2(snapOffsetX, snapOffsetY));
 
-    const guides = [] as Array<{ axis: 'x' | 'y'; value: number }>;
-    if (snapGuideX !== null) guides.push({ axis: 'x', value: snapGuideX });
-    if (snapGuideY !== null) guides.push({ axis: 'y', value: snapGuideY });
+    const movedBounds = b.translate(delta.x, delta.y);
+    const guides: Guide[] = [];
+
+    if (snapGuideX !== null) {
+      let min = movedBounds.minY;
+      let max = movedBounds.maxY;
+      if (snapGuideXRefId) {
+        const refNode = this.engine.sceneGraph.getNode(snapGuideXRefId);
+        if (refNode) {
+          const rb = refNode.worldBounds;
+          min = Math.min(min, rb.minY);
+          max = Math.max(max, rb.maxY);
+        }
+      }
+      guides.push({ axis: 'x', value: snapGuideX, min, max });
+    }
+
+    if (snapGuideY !== null) {
+      let min = movedBounds.minX;
+      let max = movedBounds.maxX;
+      if (snapGuideYRefId) {
+        const refNode = this.engine.sceneGraph.getNode(snapGuideYRefId);
+        if (refNode) {
+          const rb = refNode.worldBounds;
+          min = Math.min(min, rb.minX);
+          max = Math.max(max, rb.maxX);
+        }
+      }
+      guides.push({ axis: 'y', value: snapGuideY, min, max });
+    }
+
     this.engine.guides.setGuides(guides);
 
     for (const node of this.engine.selection.selectedNodes) {

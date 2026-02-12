@@ -1,4 +1,4 @@
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container, Graphics, Text as PixiText } from 'pixi.js';
 import { SceneGraphManager } from '../scene-graph/scene-graph-manager';
 import { SpatialIndex } from '../spatial/spatial-index';
 import { ViewportManager } from '../viewport/viewport-manager';
@@ -28,6 +28,17 @@ export class RenderManager {
   private guideOverlay = new GuideOverlay();
   private marqueeGfx = new Graphics();
   private marqueeBounds: Bounds | null = null;
+  private sizeBadgeBg = new Graphics();
+  private sizeBadgeText = new PixiText({
+    text: '',
+    style: {
+      fontSize: 11,
+      fill: 0xffffff,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontWeight: '500',
+    },
+  });
+  private sizeBadgeKey = '';
 
   private singleSelectionGfx = new Graphics();
   private singleSelectionTargetId: string | null = null;
@@ -77,6 +88,8 @@ export class RenderManager {
     this.selectionOverlay.attach(this.app.stage);
     this.guideOverlay.attach(this.app.stage);
     this.app.stage.addChild(this.marqueeGfx);
+    this.app.stage.addChild(this.sizeBadgeBg);
+    this.app.stage.addChild(this.sizeBadgeText);
 
     // Sync any nodes added before init (e.g. default page)
     this.syncExistingNodes();
@@ -135,6 +148,9 @@ export class RenderManager {
 
     // Marquee overlay (screen-space)
     this.updateMarqueeOverlay();
+
+    // Single-selection size badge (screen-space)
+    this.updateSizeBadgeOverlay();
 
     return true;
   }
@@ -297,6 +313,60 @@ export class RenderManager {
     this.marqueeGfx.stroke({ color: MARQUEE_STROKE_COLOR, alpha: MARQUEE_STROKE_ALPHA, width: 1 });
   }
 
+  private updateSizeBadgeOverlay(): void {
+    this.sizeBadgeBg.clear();
+
+    if (this.selection.count !== 1) {
+      this.sizeBadgeText.visible = false;
+      this.sizeBadgeKey = '';
+      return;
+    }
+
+    const node = this.selection.selectedNodes[0];
+    const localBounds = node.localBounds;
+    const width = localBounds.width * Math.abs(node.scaleX);
+    const height = localBounds.height * Math.abs(node.scaleY);
+
+    if (width <= 0 || height <= 0) {
+      this.sizeBadgeText.visible = false;
+      this.sizeBadgeKey = '';
+      return;
+    }
+
+    const text = `W ${this.formatSizeValue(width)}  H ${this.formatSizeValue(height)}`;
+    if (text !== this.sizeBadgeKey) {
+      this.sizeBadgeText.text = text;
+      this.sizeBadgeKey = text;
+    }
+
+    const cam = this.viewport.camera;
+    const wb = node.worldBounds;
+    const bottomCenter = cam.worldToScreen(new Vec2((wb.minX + wb.maxX) / 2, wb.maxY));
+
+    const padX = 6;
+    const padY = 3;
+    const badgeX = bottomCenter.x - this.sizeBadgeText.width / 2;
+    const badgeY = bottomCenter.y + 8;
+
+    this.sizeBadgeText.visible = true;
+    this.sizeBadgeText.x = badgeX;
+    this.sizeBadgeText.y = badgeY;
+
+    const bgX = badgeX - padX;
+    const bgY = badgeY - padY;
+    const bgW = this.sizeBadgeText.width + padX * 2;
+    const bgH = this.sizeBadgeText.height + padY * 2;
+
+    this.sizeBadgeBg.roundRect(bgX, bgY, bgW, bgH, 4);
+    this.sizeBadgeBg.fill({ color: 0x1f2937, alpha: 0.95 });
+    this.sizeBadgeBg.stroke({ color: 0x374151, alpha: 1, width: 1 });
+  }
+
+  private formatSizeValue(value: number): string {
+    const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
+    return rounded.toFixed(2);
+  }
+
   // ── private helpers ───────────────────────────────────────
 
   private syncExistingNodes(): void {
@@ -360,6 +430,8 @@ export class RenderManager {
     this.detachSingleSelection();
     this.singleSelectionGfx.destroy();
     this.marqueeGfx.destroy();
+    this.sizeBadgeBg.destroy();
+    this.sizeBadgeText.destroy();
     this.selectionOverlay.dispose();
     this.guideOverlay.dispose();
     this.app?.destroy(true);

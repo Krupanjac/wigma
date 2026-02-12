@@ -29,18 +29,17 @@ export class GuideOverlay {
     this.gfx.clear();
     if (this.guides.length === 0) return;
 
-    const w = camera.screenWidth;
-    const h = camera.screenHeight;
-
     for (const g of this.guides) {
       if (g.axis === 'x') {
-        const x = camera.worldToScreen(new Vec2(g.value, 0)).x;
-        this.gfx.moveTo(x, 0);
-        this.gfx.lineTo(x, h);
+        const from = camera.worldToScreen(new Vec2(g.value, g.min));
+        const to = camera.worldToScreen(new Vec2(g.value, g.max));
+        this.gfx.moveTo(from.x, from.y);
+        this.gfx.lineTo(to.x, to.y);
       } else {
-        const y = camera.worldToScreen(new Vec2(0, g.value)).y;
-        this.gfx.moveTo(0, y);
-        this.gfx.lineTo(w, y);
+        const from = camera.worldToScreen(new Vec2(g.min, g.value));
+        const to = camera.worldToScreen(new Vec2(g.max, g.value));
+        this.gfx.moveTo(from.x, from.y);
+        this.gfx.lineTo(to.x, to.y);
       }
     }
 

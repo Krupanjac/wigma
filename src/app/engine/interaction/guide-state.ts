@@ -1,4 +1,6 @@
-export type Guide = { axis: 'x' | 'y'; value: number };
+export type Guide =
+  | { axis: 'x'; value: number; min: number; max: number }
+  | { axis: 'y'; value: number; min: number; max: number };
 
 /**
  * GuideState holds the currently active alignment/snap guides to render.
