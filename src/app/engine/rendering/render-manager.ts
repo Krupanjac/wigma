@@ -148,10 +148,8 @@ export class RenderManager {
       }
     }
 
-    // Clear dirty flags on all nodes
-    for (const node of this.sceneGraph.getAllNodes()) {
-      node.clearDirtyFlags();
-    }
+    // Clear dirty flags on all nodes (no array allocation)
+    this.sceneGraph.forEachNode(node => node.clearDirtyFlags());
 
     // Hover outline (parented to node in world-space)
     this.updateHoverOutline();

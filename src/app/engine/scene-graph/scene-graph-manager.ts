@@ -57,9 +57,16 @@ export class SceneGraphManager {
     return this.nodeMap.has(id);
   }
 
-  /** Get all nodes. */
+  /** Get all nodes (creates a new array — avoid in hot paths). */
   getAllNodes(): BaseNode[] {
     return Array.from(this.nodeMap.values());
+  }
+
+  /** Iterate all nodes without allocating an array. Use in hot paths (render loop). */
+  forEachNode(callback: (node: BaseNode) => void): void {
+    for (const node of this.nodeMap.values()) {
+      callback(node);
+    }
   }
 
   /** Total number of nodes (including root). */

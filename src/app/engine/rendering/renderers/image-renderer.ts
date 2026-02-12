@@ -1,8 +1,9 @@
-import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
 import { ImageNode } from '../../scene-graph/image-node';
 import { graphicsPool } from '../../pools/graphics-pool';
+import { TextureStore } from '../texture-store';
 
 /**
  * ImageRenderer — displays actual image textures with a placeholder
@@ -44,17 +45,29 @@ export class ImageRenderer extends BaseRenderer<Container> {
       if (prevSrc !== imageNode.src) {
         this.loadedSrcMap.set(node.id, imageNode.src);
 
-        // Use Assets.load for proper async texture creation in PixiJS 8
         const src = imageNode.src;
-        Assets.load<Texture>(src).then((texture) => {
-          if (this.loadedSrcMap.get(node.id) !== src) return; // stale
-          sprite.texture = texture;
+
+        // Try synchronous cache hit first (avoids async overhead for cloned images)
+        const cachedTexture = TextureStore.get(src);
+        if (cachedTexture) {
+          sprite.texture = cachedTexture;
           sprite.width = imageNode.width;
           sprite.height = imageNode.height;
           sprite.visible = true;
           placeholder.clear();
           placeholder.visible = false;
-        });
+        } else {
+          // Async load via TextureStore (deduplicates by content hash)
+          TextureStore.load(src).then((texture) => {
+            if (this.loadedSrcMap.get(node.id) !== src) return; // stale
+            sprite.texture = texture;
+            sprite.width = imageNode.width;
+            sprite.height = imageNode.height;
+            sprite.visible = true;
+            placeholder.clear();
+            placeholder.visible = false;
+          });
+        }
       }
 
       // Size sprite if texture already loaded

@@ -1,8 +1,9 @@
-import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
 import { VideoNode } from '../../scene-graph/video-node';
 import { graphicsPool } from '../../pools/graphics-pool';
+import { TextureStore } from '../texture-store';
 
 /**
  * VideoRenderer — displays the poster frame of a video with a play-button overlay.
@@ -52,15 +53,27 @@ export class VideoRenderer extends BaseRenderer<Container> {
         this.loadedPosterMap.set(node.id, videoNode.posterSrc);
 
         const posterSrc = videoNode.posterSrc;
-        Assets.load<Texture>(posterSrc).then((texture) => {
-          if (this.loadedPosterMap.get(node.id) !== posterSrc) return;
-          poster.texture = texture;
+
+        // Try synchronous cache hit first
+        const cachedTexture = TextureStore.get(posterSrc);
+        if (cachedTexture) {
+          poster.texture = cachedTexture;
           poster.width = w;
           poster.height = h;
           poster.visible = true;
           bg.clear();
           bg.visible = false;
-        });
+        } else {
+          TextureStore.load(posterSrc).then((texture) => {
+            if (this.loadedPosterMap.get(node.id) !== posterSrc) return;
+            poster.texture = texture;
+            poster.width = w;
+            poster.height = h;
+            poster.visible = true;
+            bg.clear();
+            bg.visible = false;
+          });
+        }
       }
 
       if (poster.texture !== Texture.EMPTY) {

@@ -69,9 +69,12 @@ export class MenuCommandsService {
 
   selectAll(): void {
     if (!this.engine) return;
-    const allNodes = this.engine.sceneGraph.getAllNodes()
-      .filter(n => n !== this.engine!.sceneGraph.root);
-    this.engine.selection.selectMultiple(allNodes);
+    const page = this.engine.activePage;
+    if (!page) return;
+
+    // Select only direct children of the active page (like Figma)
+    const nodes = page.children.filter(n => n.visible);
+    this.engine.selection.selectMultiple(nodes);
   }
 
   // ── Arrange ─────────────────────────────────────────────
@@ -89,9 +92,9 @@ export class MenuCommandsService {
   zoomOut(): void { this.engine?.viewport.zoomController.setZoomImmediate((this.engine?.viewport.camera.zoom ?? 1) * 0.8); }
   zoomToFit(): void {
     if (!this.engine) return;
-    const allNodes = this.engine.sceneGraph.getAllNodes()
-      .filter(n => n !== this.engine!.sceneGraph.root);
-    const allBounds = allNodes.map(n => n.worldBounds);
+    const page = this.engine.activePage;
+    if (!page || page.children.length === 0) return;
+    const allBounds = page.children.map(n => n.worldBounds);
     this.engine.viewport.fitToAll(allBounds);
   }
   zoomTo100(): void { this.engine?.viewport.camera.setZoom(1); }
