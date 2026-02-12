@@ -17,10 +17,10 @@ export class PolygonNode extends BaseNode {
 
   get sides(): number { return this._sides; }
   set sides(value: number) {
-    this._sides = Math.max(3, value);
-    this.rebuildVertices();
-    this.markRenderDirty();
-    this.markBoundsDirty();
+    const next = Math.max(3, Math.floor(value));
+    if (next === this._sides) return;
+    this._sides = next;
+    this.updateGeometry();
   }
 
   get vertices(): Vec2[] { return this._vertices; }
@@ -43,6 +43,12 @@ export class PolygonNode extends BaseNode {
     }
   }
 
+  private updateGeometry(): void {
+    this.rebuildVertices();
+    this.markRenderDirty();
+    this.markBoundsDirty();
+  }
+
   private rebuildVertices(): void {
     const cx = this.width / 2;
     const cy = this.height / 2;
@@ -51,7 +57,10 @@ export class PolygonNode extends BaseNode {
   }
 
   computeLocalBounds(): Bounds {
-    return new Bounds(0, 0, this.width, this.height);
+    if (this._vertices.length === 0) {
+      return Bounds.EMPTY;
+    }
+    return Bounds.fromPoints(this._vertices);
   }
 
   override toJSON(): Record<string, unknown> {

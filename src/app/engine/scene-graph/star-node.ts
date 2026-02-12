@@ -18,18 +18,18 @@ export class StarNode extends BaseNode {
 
   get points(): number { return this._points; }
   set points(value: number) {
-    this._points = Math.max(3, value);
-    this.rebuildVertices();
-    this.markRenderDirty();
-    this.markBoundsDirty();
+    const next = Math.max(3, Math.floor(value));
+    if (next === this._points) return;
+    this._points = next;
+    this.updateGeometry();
   }
 
   get innerRadiusRatio(): number { return this._innerRadiusRatio; }
   set innerRadiusRatio(value: number) {
-    this._innerRadiusRatio = Math.max(0.01, Math.min(0.99, value));
-    this.rebuildVertices();
-    this.markRenderDirty();
-    this.markBoundsDirty();
+    const next = Math.max(0.01, Math.min(0.99, value));
+    if (next === this._innerRadiusRatio) return;
+    this._innerRadiusRatio = next;
+    this.updateGeometry();
   }
 
   get vertices(): Vec2[] { return this._vertices; }
@@ -52,6 +52,12 @@ export class StarNode extends BaseNode {
     }
   }
 
+  private updateGeometry(): void {
+    this.rebuildVertices();
+    this.markRenderDirty();
+    this.markBoundsDirty();
+  }
+
   private rebuildVertices(): void {
     const cx = this.width / 2;
     const cy = this.height / 2;
@@ -61,7 +67,10 @@ export class StarNode extends BaseNode {
   }
 
   computeLocalBounds(): Bounds {
-    return new Bounds(0, 0, this.width, this.height);
+    if (this._vertices.length === 0) {
+      return Bounds.EMPTY;
+    }
+    return Bounds.fromPoints(this._vertices);
   }
 
   override toJSON(): Record<string, unknown> {

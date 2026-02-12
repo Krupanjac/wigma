@@ -80,7 +80,7 @@
         </div>
       }
 
-      <app-transform-section [engine]="engine" [node]="selectedNode()" />
+      <app-transform-section [engine]="engine" [node]="selectedNode()" [refreshTick]="refreshTick()" />
       <app-fill-section [engine]="engine" [node]="selectedNode()" />
       <app-stroke-section [engine]="engine" [node]="selectedNode()" />
       @if (hasText()) {

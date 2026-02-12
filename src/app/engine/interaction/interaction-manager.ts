@@ -38,6 +38,7 @@ export class InteractionManager {
   };
 
   private element: HTMLElement | null = null;
+  private currentCursor = 'default';
 
   constructor(private viewport: ViewportManager) {}
 
@@ -64,7 +65,17 @@ export class InteractionManager {
     this.element.removeEventListener('wheel', this.handleWheel);
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
+    this.element.style.cursor = 'default';
     this.element = null;
+    this.currentCursor = 'default';
+  }
+
+  setCursor(cursor: string): void {
+    if (this.currentCursor === cursor) return;
+    this.currentCursor = cursor;
+    if (this.element) {
+      this.element.style.cursor = cursor;
+    }
   }
 
   // ── Listener registration ──

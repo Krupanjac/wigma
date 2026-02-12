@@ -27,12 +27,13 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
 
   readonly selectedNodes = signal<BaseNode[]>([]);
   readonly selectedNode = computed(() => this.selectedNodes()[0] ?? null);
+  readonly refreshTick = signal(0);
 
   readonly selectedCount = computed(() => this.selectedNodes().length);
   readonly hasText = computed(() => this.selectedNodes().some(n => n.type === 'text'));
 
   private unsubscribeSelection: (() => void) | null = null;
-  private rafPending = false;
+  private syncPending = false;
 
   ngOnChanges(): void {
     this.unsubscribeSelection?.();
@@ -44,13 +45,14 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
     }
 
     const sync = () => {
-      if (this.rafPending) return;
-      this.rafPending = true;
-      requestAnimationFrame(() => {
-        this.rafPending = false;
+      if (this.syncPending) return;
+      this.syncPending = true;
+      queueMicrotask(() => {
+        this.syncPending = false;
         const nodes = this.engine?.selection.selectedNodes ?? [];
         this.ngZone.run(() => {
           this.selectedNodes.set(nodes);
+          this.refreshTick.update(v => v + 1);
         });
       });
     };

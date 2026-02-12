@@ -37,7 +37,7 @@ export const HANDLE_STROKE = 0x3b82f6;
 export const ROTATION_HANDLE_DISTANCE = 24;
 
 export const MARQUEE_FILL_COLOR = 0x3b82f6;
-export const MARQUEE_FILL_ALPHA = 0.08;
+export const MARQUEE_FILL_ALPHA = 0.16;
 export const MARQUEE_STROKE_COLOR = 0x3b82f6;
 export const MARQUEE_STROKE_ALPHA = 0.5;
 

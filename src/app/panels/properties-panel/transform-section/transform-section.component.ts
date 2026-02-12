@@ -3,6 +3,7 @@ import { CanvasEngine } from '../../../engine/canvas-engine';
 import { BaseNode } from '../../../engine/scene-graph/base-node';
 import { PolygonNode } from '../../../engine/scene-graph/polygon-node';
 import { StarNode } from '../../../engine/scene-graph/star-node';
+import { Bounds } from '../../../shared/math/bounds';
 
 @Component({
   selector: 'app-transform-section',
@@ -14,6 +15,40 @@ import { StarNode } from '../../../engine/scene-graph/star-node';
 export class TransformSectionComponent {
   @Input() engine: CanvasEngine | null = null;
   @Input() node: BaseNode | null = null;
+  @Input() refreshTick = 0;
+
+  private roundNumber(value: number): number {
+    const precision = 100;
+    return Math.round((value + Number.EPSILON) * precision) / precision;
+  }
+
+  private worldBounds(node: BaseNode | null): Bounds {
+    if (!node) return Bounds.EMPTY;
+    const bounds = node.worldBounds;
+    return bounds.isEmpty
+      ? Bounds.fromXYWH(node.x, node.y, node.width, node.height)
+      : bounds;
+  }
+
+  formatNumber(value: number): string {
+    return this.roundNumber(value).toString();
+  }
+
+  displayX(): string {
+    return this.formatNumber(this.worldBounds(this.node).minX);
+  }
+
+  displayY(): string {
+    return this.formatNumber(this.worldBounds(this.node).minY);
+  }
+
+  displayWidth(): string {
+    return this.formatNumber(this.worldBounds(this.node).width);
+  }
+
+  displayHeight(): string {
+    return this.formatNumber(this.worldBounds(this.node).height);
+  }
 
   asPolygon(node: BaseNode | null): PolygonNode | null {
     return node?.type === 'polygon' ? (node as PolygonNode) : null;
@@ -31,17 +66,73 @@ export class TransformSectionComponent {
     const value = Number(raw);
     if (!Number.isFinite(value)) return;
 
-    (this.node as unknown as Record<string, number>)[key] = value;
+    const next = this.roundNumber(value);
+
+    if (key === 'x' || key === 'y') {
+      const b = this.worldBounds(this.node);
+      const dx = key === 'x' ? next - b.minX : 0;
+      const dy = key === 'y' ? next - b.minY : 0;
+      this.node.x = this.node.x + dx;
+      this.node.y = this.node.y + dy;
+      this.engine?.sceneGraph.notifyNodeChanged(this.node);
+      return;
+    }
+
+    if (key === 'width' || key === 'height') {
+      const b = this.worldBounds(this.node);
+      const desired = Math.max(0.01, next);
+
+      if (key === 'width') {
+        if (b.width <= 1e-6) return;
+        const left = b.minX;
+        const factor = desired / b.width;
+        this.node.scaleX = this.node.scaleX * factor;
+        const after = this.worldBounds(this.node);
+        this.node.x = this.node.x + (left - after.minX);
+      } else {
+        if (b.height <= 1e-6) return;
+        const top = b.minY;
+        const factor = desired / b.height;
+        this.node.scaleY = this.node.scaleY * factor;
+        const after = this.worldBounds(this.node);
+        this.node.y = this.node.y + (top - after.minY);
+      }
+
+      this.engine?.sceneGraph.notifyNodeChanged(this.node);
+      return;
+    }
+
+    this.node.rotation = next;
     this.engine?.sceneGraph.notifyNodeChanged(this.node);
   }
 
   nudgeNumber(key: 'x' | 'y' | 'width' | 'height' | 'rotation', delta: number, event?: MouseEvent): void {
     if (!this.node) return;
     const step = event?.shiftKey ? 10 : 1;
-    const current = (this.node as unknown as Record<string, number>)[key] ?? 0;
-    const next = current + delta * step;
-    (this.node as unknown as Record<string, number>)[key] = next;
-    this.engine?.sceneGraph.notifyNodeChanged(this.node);
+
+    if (key === 'x') {
+      const current = this.worldBounds(this.node).minX;
+      this.setNumber('x', (current + delta * step).toString());
+      return;
+    }
+    if (key === 'y') {
+      const current = this.worldBounds(this.node).minY;
+      this.setNumber('y', (current + delta * step).toString());
+      return;
+    }
+    if (key === 'width') {
+      const current = this.worldBounds(this.node).width;
+      this.setNumber('width', (current + delta * step).toString());
+      return;
+    }
+    if (key === 'height') {
+      const current = this.worldBounds(this.node).height;
+      this.setNumber('height', (current + delta * step).toString());
+      return;
+    }
+
+    const current = this.node.rotation;
+    this.setNumber('rotation', (current + delta * step).toString());
   }
 
   setPolygonSides(raw: string): void {
@@ -83,7 +174,7 @@ export class TransformSectionComponent {
     if (!star) return;
     const value = Number(raw);
     if (!Number.isFinite(value)) return;
-    star.innerRadiusRatio = value;
+    star.innerRadiusRatio = this.roundNumber(value);
     this.engine?.sceneGraph.notifyNodeChanged(star);
   }
 
@@ -91,7 +182,7 @@ export class TransformSectionComponent {
     const star = this.asStar(this.node);
     if (!star) return;
     const step = event?.shiftKey ? 0.1 : 0.01;
-    star.innerRadiusRatio = star.innerRadiusRatio + delta * step;
+    star.innerRadiusRatio = this.roundNumber(star.innerRadiusRatio + delta * step);
     this.engine?.sceneGraph.notifyNodeChanged(star);
   }
 

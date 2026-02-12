@@ -6,7 +6,7 @@
       <div class="flex items-center">
         <input
           type="number"
-          [value]="node?.x ?? 0"
+          [value]="displayX()"
           (change)="setNumber('x', $any($event.target).value)"
           class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
         />
@@ -21,7 +21,7 @@
       <div class="flex items-center">
         <input
           type="number"
-          [value]="node?.y ?? 0"
+          [value]="displayY()"
           (change)="setNumber('y', $any($event.target).value)"
           class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
         />
@@ -36,7 +36,7 @@
       <div class="flex items-center">
         <input
           type="number"
-          [value]="node?.width ?? 0"
+          [value]="displayWidth()"
           (change)="setNumber('width', $any($event.target).value)"
           class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
         />
@@ -51,7 +51,7 @@
       <div class="flex items-center">
         <input
           type="number"
-          [value]="node?.height ?? 0"
+          [value]="displayHeight()"
           (change)="setNumber('height', $any($event.target).value)"
           class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
         />
@@ -66,7 +66,7 @@
       <div class="flex items-center">
         <input
           type="number"
-          [value]="node?.rotation ?? 0"
+          [value]="formatNumber(node?.rotation ?? 0)"
           (change)="setNumber('rotation', $any($event.target).value)"
           class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
         />
@@ -121,7 +121,7 @@
             min="0.01"
             max="0.99"
             step="0.01"
-            [value]="asStar(node)?.innerRadiusRatio ?? 0.4"
+            [value]="formatNumber(asStar(node)?.innerRadiusRatio ?? 0.4)"
             (change)="setStarInnerRatio($any($event.target).value)"
             class="bg-zinc-800 border border-zinc-700 rounded-l-lg px-2 py-1 text-xs text-white w-full h-9 focus:border-blue-500 outline-none"
           />

@@ -181,11 +181,7 @@ export abstract class BaseNode {
 
   get localMatrix(): Matrix2D {
     if (this.dirty.transform) {
-      this._localMatrix = Matrix2D.fromTRS(
-        this._x, this._y,
-        this._rotation,
-        this._scaleX, this._scaleY
-      );
+      this._localMatrix = this.composeLocalMatrix();
     }
     return this._localMatrix;
   }
@@ -198,11 +194,7 @@ export abstract class BaseNode {
   }
 
   private updateWorldTransform(): void {
-    this._localMatrix = Matrix2D.fromTRS(
-      this._x, this._y,
-      this._rotation,
-      this._scaleX, this._scaleY
-    );
+    this._localMatrix = this.composeLocalMatrix();
 
     if (this.parent) {
       this._worldMatrix = this.parent.worldMatrix.multiply(this._localMatrix);
@@ -212,6 +204,24 @@ export abstract class BaseNode {
 
     this.dirty.transform = false;
     this.dirty.bounds = true;
+  }
+
+  private composeLocalMatrix(): Matrix2D {
+    const localBounds = this.computeLocalBounds();
+    const pivotX = (localBounds.minX + localBounds.maxX) / 2;
+    const pivotY = (localBounds.minY + localBounds.maxY) / 2;
+
+    const cos = Math.cos(this._rotation);
+    const sin = Math.sin(this._rotation);
+    const a = cos * this._scaleX;
+    const b = sin * this._scaleX;
+    const c = -sin * this._scaleY;
+    const d = cos * this._scaleY;
+
+    const tx = this._x + pivotX - (a * pivotX + c * pivotY);
+    const ty = this._y + pivotY - (b * pivotX + d * pivotY);
+
+    return new Matrix2D(a, b, c, d, tx, ty);
   }
 
   /** Compute local bounds (shape-specific, overridden by subclasses). */
@@ -261,7 +271,7 @@ export abstract class BaseNode {
   }
 
   markBoundsDirty(): void {
-    this.dirty.bounds = true;
+    this.markTransformDirty();
   }
 
   clearDirtyFlags(): void {

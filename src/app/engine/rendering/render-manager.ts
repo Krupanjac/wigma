@@ -9,7 +9,8 @@ import { SelectionOverlay } from './overlays/selection-overlay';
 import { Vec2 } from '@shared/math/vec2';
 import { GuideState } from '../interaction/guide-state';
 import { GuideOverlay } from './overlays/guide-overlay';
-import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_STROKE_WIDTH } from '@shared/constants';
+import { DEFAULT_CANVAS_BG, HANDLE_FILL, HANDLE_SIZE, HANDLE_STROKE, MARQUEE_FILL_ALPHA, MARQUEE_FILL_COLOR, MARQUEE_STROKE_ALPHA, MARQUEE_STROKE_COLOR, ROTATION_HANDLE_DISTANCE, SELECTION_COLOR, SELECTION_STROKE_WIDTH } from '@shared/constants';
+import { Bounds } from '@shared/math/bounds';
 
 /**
  * RenderManager — creates and owns the PixiJS Application,
@@ -25,6 +26,8 @@ export class RenderManager {
 
   private selectionOverlay = new SelectionOverlay();
   private guideOverlay = new GuideOverlay();
+  private marqueeGfx = new Graphics();
+  private marqueeBounds: Bounds | null = null;
 
   private singleSelectionGfx = new Graphics();
   private singleSelectionTargetId: string | null = null;
@@ -73,6 +76,7 @@ export class RenderManager {
     // Overlays in screen-space (on top of world)
     this.selectionOverlay.attach(this.app.stage);
     this.guideOverlay.attach(this.app.stage);
+    this.app.stage.addChild(this.marqueeGfx);
 
     // Sync any nodes added before init (e.g. default page)
     this.syncExistingNodes();
@@ -96,7 +100,11 @@ export class RenderManager {
       if (!node) continue;
 
       // Always update transform (cheap)
-      displayObj.position.set(node.x, node.y);
+      const localBounds = node.localBounds;
+      const pivotX = (localBounds.minX + localBounds.maxX) / 2;
+      const pivotY = (localBounds.minY + localBounds.maxY) / 2;
+      displayObj.pivot.set(pivotX, pivotY);
+      displayObj.position.set(node.x + pivotX, node.y + pivotY);
       displayObj.rotation = node.rotation;
       displayObj.scale.set(node.scaleX, node.scaleY);
       displayObj.alpha = node.opacity;
@@ -125,7 +133,14 @@ export class RenderManager {
     // Guide overlay (screen-space)
     this.updateGuideOverlay();
 
+    // Marquee overlay (screen-space)
+    this.updateMarqueeOverlay();
+
     return true;
+  }
+
+  setMarqueeBounds(bounds: Bounds | null): void {
+    this.marqueeBounds = bounds;
   }
 
   private updateSelectionOverlay(): void {
@@ -262,6 +277,26 @@ export class RenderManager {
     this.guideOverlay.update(cam);
   }
 
+  private updateMarqueeOverlay(): void {
+    this.marqueeGfx.clear();
+    if (!this.marqueeBounds || this.marqueeBounds.isEmpty) return;
+
+    const cam = this.viewport.camera;
+    const topLeft = cam.worldToScreen(new Vec2(this.marqueeBounds.minX, this.marqueeBounds.minY));
+    const bottomRight = cam.worldToScreen(new Vec2(this.marqueeBounds.maxX, this.marqueeBounds.maxY));
+
+    const minX = Math.min(topLeft.x, bottomRight.x);
+    const minY = Math.min(topLeft.y, bottomRight.y);
+    const w = Math.abs(bottomRight.x - topLeft.x);
+    const h = Math.abs(bottomRight.y - topLeft.y);
+
+    if (w <= 0 || h <= 0) return;
+
+    this.marqueeGfx.rect(minX, minY, w, h);
+    this.marqueeGfx.fill({ color: MARQUEE_FILL_COLOR, alpha: MARQUEE_FILL_ALPHA });
+    this.marqueeGfx.stroke({ color: MARQUEE_STROKE_COLOR, alpha: MARQUEE_STROKE_ALPHA, width: 1 });
+  }
+
   // ── private helpers ───────────────────────────────────────
 
   private syncExistingNodes(): void {
@@ -285,7 +320,11 @@ export class RenderManager {
 
     // Initial sync
     renderer.sync(node, displayObj);
-    displayObj.position.set(node.x, node.y);
+    const localBounds = node.localBounds;
+    const pivotX = (localBounds.minX + localBounds.maxX) / 2;
+    const pivotY = (localBounds.minY + localBounds.maxY) / 2;
+    displayObj.pivot.set(pivotX, pivotY);
+    displayObj.position.set(node.x + pivotX, node.y + pivotY);
     displayObj.rotation = node.rotation;
     displayObj.scale.set(node.scaleX, node.scaleY);
     displayObj.alpha = node.opacity;
@@ -320,6 +359,7 @@ export class RenderManager {
     this.displayObjects.clear();
     this.detachSingleSelection();
     this.singleSelectionGfx.destroy();
+    this.marqueeGfx.destroy();
     this.selectionOverlay.dispose();
     this.guideOverlay.dispose();
     this.app?.destroy(true);
