@@ -80,9 +80,16 @@ export class Camera {
   }
 
   private updateMatrices(): void {
-    // View matrix: translate then scale
-    this._viewMatrix = Matrix2D.translation(-this._x, -this._y)
-      .scale(this._zoom, this._zoom);
+    // View matrix: screen = (world - cameraPos) * zoom
+    // Must scale translation terms too, otherwise pointer/world mapping drifts with zoom.
+    this._viewMatrix = new Matrix2D(
+      this._zoom,
+      0,
+      0,
+      this._zoom,
+      -this._x * this._zoom,
+      -this._y * this._zoom
+    );
 
     const inv = this._viewMatrix.invert();
     this._inverseViewMatrix = inv ?? Matrix2D.IDENTITY;
