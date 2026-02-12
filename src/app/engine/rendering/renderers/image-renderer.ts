@@ -1,12 +1,13 @@
 import { Graphics } from 'pixi.js';
 import { BaseRenderer } from './base-renderer';
 import { BaseNode, NodeType } from '../../scene-graph/base-node';
+import { graphicsPool } from '../../pools/graphics-pool';
 
 export class ImageRenderer extends BaseRenderer<Graphics> {
   readonly nodeType: NodeType = 'image';
 
   create(_node: BaseNode): Graphics {
-    return new Graphics();
+    return graphicsPool.acquire();
   }
 
   sync(node: BaseNode, gfx: Graphics): void {
@@ -17,6 +18,6 @@ export class ImageRenderer extends BaseRenderer<Graphics> {
   }
 
   destroy(gfx: Graphics): void {
-    gfx.destroy();
+    graphicsPool.release(gfx);
   }
 }
