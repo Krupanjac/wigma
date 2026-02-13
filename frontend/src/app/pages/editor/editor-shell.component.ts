@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { EditorComponent } from '../../editor.component';
 import { ProjectApiService } from '../../core/services/project-api.service';
 import { ProjectService } from '../../core/services/project.service';
+import { LoaderService } from '../../core/services/loader.service';
 import type { DbProject } from '@wigma/shared';
 
 /**
@@ -22,14 +23,9 @@ import type { DbProject } from '@wigma/shared';
   imports: [EditorComponent],
   template: `
     @if (isLoading()) {
-      <div class="flex items-center justify-center h-screen bg-[#1e1e1e]">
-        <div class="text-center">
-          <div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p class="text-sm text-neutral-400">Loading project…</p>
-        </div>
-      </div>
+      <div class="h-screen bg-[#09090b]"></div>
     } @else if (errorMessage()) {
-      <div class="flex items-center justify-center h-screen bg-[#1e1e1e]">
+      <div class="flex items-center justify-center h-screen bg-[#09090b]">
         <div class="text-center max-w-md px-6">
           <p class="text-red-400 mb-4">{{ errorMessage() }}</p>
           <button
@@ -50,11 +46,13 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly projectApi = inject(ProjectApiService);
   private readonly projectService = inject(ProjectService);
+  private readonly loader = inject(LoaderService);
 
   readonly isLoading = signal(true);
   readonly errorMessage = signal<string | null>(null);
 
   private projectId: string | null = null;
+  private hideLoader: (() => void) | null = null;
 
   ngOnInit(): void {
     this.projectId = this.route.snapshot.paramMap.get('id');
@@ -69,6 +67,7 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.hideLoader) { this.hideLoader(); this.hideLoader = null; }
     this.projectService.clearRemoteProject();
   }
 
@@ -77,11 +76,14 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   }
 
   private async loadProject(id: string): Promise<void> {
+    this.hideLoader = this.loader.show('Loading project…');
     try {
       const { data, error } = await this.projectApi.getProject(id);
 
       if (error || !data) {
         this.errorMessage.set(error ?? 'Project not found');
+        this.hideLoader();
+        this.hideLoader = null;
         this.isLoading.set(false);
         return;
       }
@@ -93,10 +95,13 @@ export class EditorShellComponent implements OnInit, OnDestroy {
       // This waits for the engine to be ready, then loads
       await this.loadSceneWhenReady(id);
 
+      this.hideLoader();
+      this.hideLoader = null;
       this.isLoading.set(false);
     } catch (err: any) {
       console.error('[EditorShell] loadProject error:', err);
       this.errorMessage.set(err?.message ?? 'Failed to load project');
+      if (this.hideLoader) { this.hideLoader(); this.hideLoader = null; }
       this.isLoading.set(false);
     }
   }
