@@ -1,5 +1,5 @@
 <div class="flex h-10 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-3">
-  <span class="text-sm font-bold tracking-wide text-zinc-300">Wigma</span>
+  <a routerLink="/projects" class="text-sm font-bold tracking-wide text-zinc-300 hover:text-white cursor-pointer transition-colors">Wigma</a>
   <div class="flex items-center gap-2 text-xs text-zinc-500">
     <span class="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{{ project.document().name }}</span>
     <span>{{ project.isDirty() ? 'Unsaved changes' : 'Saved' }}</span>
