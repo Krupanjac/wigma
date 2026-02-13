@@ -1,29 +1,147 @@
 # Wigma
 
-A Figma-like vector design engine built with **Angular 21**, **PixiJS 8**, **Tailwind CSS 4.1**, and **rbush** R-tree spatial indexing. Wigma provides GPU-accelerated canvas rendering, a rich tool palette, undo/redo history, clipboard operations, IndexedDB persistence, and a dark-themed professional UI.
+A **Figma-class collaborative vector design tool** built as a monorepo with an **Angular 21 + PixiJS 8** frontend for GPU-accelerated canvas editing and a **C++ uWebSockets** relay server for real-time multi-user collaboration, backed by **Supabase Cloud** (PostgreSQL, Auth, Storage).
 
 ---
 
 ## Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
-2. [Directory Structure](#directory-structure)
-3. [Getting Started](#getting-started)
-4. [Algorithms & Data Structures](#algorithms--data-structures)
-5. [Rendering Pipeline](#rendering-pipeline)
-6. [Scene Graph & Node Model](#scene-graph--node-model)
-7. [Tool System](#tool-system)
-8. [Command Pattern & Undo/Redo](#command-pattern--undoredo)
-9. [Persistence Layer](#persistence-layer)
-10. [Performance Strategies](#performance-strategies)
-11. [Keyboard Shortcuts](#keyboard-shortcuts)
-12. [Tech Stack](#tech-stack)
+1. [Project Overview](#project-overview)
+2. [Monorepo Structure](#monorepo-structure)
+3. [Architecture Overview](#architecture-overview)
+4. [Frontend](#frontend)
+5. [Backend](#backend)
+6. [Shared Types](#shared-types)
+7. [Getting Started](#getting-started)
+8. [Database Schema](#database-schema)
+9. [Authentication & Authorization](#authentication--authorization)
+10. [Real-Time Collaboration](#real-time-collaboration)
+11. [Persistence Pipeline](#persistence-pipeline)
+12. [Performance Strategies](#performance-strategies)
+13. [Keyboard Shortcuts](#keyboard-shortcuts)
+14. [Tech Stack](#tech-stack)
+
+---
+
+## Project Overview
+
+Wigma is a full-stack design application that mirrors the Figma workflow: GPU-rendered canvas, vector tools, real-time multi-user editing, and cloud persistence. The three pillars:
+
+| Pillar              | Technology                  | Role                                           |
+|---------------------|-----------------------------|-------------------------------------------------|
+| **Frontend**        | Angular 21 + PixiJS 8       | Canvas rendering, tool system, UI panels        |
+| **Backend**         | C++ uWebSockets (Docker)     | WebSocket relay for real-time Yjs CRDT sync     |
+| **Cloud Services**  | Supabase Cloud               | PostgreSQL, JWT Auth, Row-Level Security, Storage|
+
+**Key capabilities:**
+
+- 20+ drawing tools (rectangle, ellipse, polygon, star, pen, pencil, text, image, video, …)
+- Undo/redo (command pattern, max 200 steps, temporal merging)
+- Copy/cut/paste with deep clone
+- GPU-accelerated rendering with idle frame detection
+- R-tree spatial indexing for $O(\log n)$ range queries
+- Alignment snapping guides
+- Cloud save/load with per-project JSONB persistence
+- User authentication with auto-profile creation
+- Thumbnail generation with WebGL texture-size clamping
+- PNG and JSON export
+
+---
+
+## Monorepo Structure
+
+```
+wigma/
+├── .gitignore
+├── README.md                  ← This file
+├── frontend/                  ← Angular 21 + PixiJS 8 application
+│   ├── package.json
+│   ├── angular.json
+│   ├── README.md              ← Detailed frontend documentation
+│   └── src/
+│       └── app/
+│           ├── engine/        ← Pure OOP rendering engine (zero Angular deps)
+│           ├── tools/         ← 20+ drawing tools
+│           ├── core/          ← Commands, models, services
+│           ├── panels/        ← UI: toolbar, layers, properties, menu-bar, context-menu
+│           ├── pages/         ← Route-level components (login, projects, editor)
+│           └── shared/        ← Math, data structures, utilities
+├── backend/                   ← C++ WebSocket server + Supabase migrations
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   ├── .env / .env.example
+│   ├── README.md              ← Detailed backend documentation
+│   ├── supabase/
+│   │   └── migrations/        ← PostgreSQL schema + RLS policies
+│   └── ws-server/
+│       ├── CMakeLists.txt
+│       └── src/               ← C++20 server source
+├── shared/                    ← Cross-boundary TypeScript types
+│   └── types/
+│       ├── database.types.ts  ← DB row types, insert/update types, WS protocol
+│       └── index.ts
+└── build/                     ← Build artifacts (gitignored)
+```
 
 ---
 
 ## Architecture Overview
 
-Wigma is organized into four strictly layered tiers. Dependencies flow **downward only** — upper layers may import from lower layers, never the reverse.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Frontend (Angular 21)                          │
+│                                                                        │
+│   ┌──────────────┐  ┌───────────────┐  ┌────────────────────────────┐ │
+│   │  UI Panels   │  │  Tool System  │  │  Canvas Engine (PixiJS 8)  │ │
+│   │  (Tailwind)  │  │  (20+ tools)  │  │  scene-graph, viewport,   │ │
+│   │              │  │               │  │  rendering, spatial, pools │ │
+│   └──────┬───────┘  └───────┬───────┘  └────────────┬───────────────┘ │
+│          │ Angular Signals   │ OOP lifecycle          │ WebGL/Canvas2D │
+│          └──────────────────┴────────────────────────┘                 │
+│                              │                                         │
+│          ┌───────────────────┴───────────────────┐                     │
+│          │  Core Services (Angular DI)           │                     │
+│          │  project, history, clipboard, export  │                     │
+│          │  auth, keybinding, supabase            │                     │
+│          └──────────────┬────────────────────────┘                     │
+└─────────────────────────┼──────────────────────────────────────────────┘
+                          │
+           ┌──────────────┴──────────────┐
+           │ Supabase JS SDK             │ WebSocket
+           │ (REST/HTTPS)                │ (wss://)
+           ▼                             ▼
+┌──────────────────────────┐  ┌─────────────────────────┐
+│  Supabase Cloud          │  │  C++ WebSocket Server   │
+│                          │  │  (uWebSockets, Docker)  │
+│  • PostgreSQL (RLS)      │  │                         │
+│  • Auth (JWT + OAuth)    │  │  • JWT verification     │
+│  • Storage (media)       │  │  • Room management      │
+│                          │  │  • Yjs CRDT relay       │
+│  Tables:                 │  │  • Zero-copy broadcast  │
+│    projects              │  │                         │
+│    project_users         │  │  Port: 9001             │
+│    profiles              │  └────────────┬────────────┘
+│    yjs_snapshots         │               │
+│    yjs_updates           │               │ REST (service-role key)
+│    media_files           │←──────────────┘
+└──────────────────────────┘
+```
+
+**Key design decisions:**
+
+- **Engine runs outside NgZone** — `NgZone.runOutsideAngular()` prevents Angular change detection from firing on `requestAnimationFrame`, mouse moves, or wheel events. Angular signals bridge engine state to the UI on demand.
+- **Server is a pure relay** — The C++ server does NOT interpret Yjs CRDT data. It broadcasts binary Yjs updates to all peers in a room and persists them as opaque blobs. All merge logic runs on the client.
+- **Supabase Cloud for all state** — Auth (JWT + OAuth), PostgreSQL (project metadata, Yjs persistence), Storage (images, videos). No self-hosted database.
+- **Shared types as single source of truth** — `shared/types/database.types.ts` defines all DB row types, insert/update contracts, and WebSocket protocol message shapes, consumed by both frontend and backend.
+- **SECURITY DEFINER helpers for RLS** — Row-Level Security policies use PostgreSQL helper functions with `SECURITY DEFINER` to break circular policy references (e.g., `is_project_member()`, `is_project_editor()`).
+
+---
+
+## Frontend
+
+> Full documentation: [`frontend/README.md`](frontend/README.md)
+
+### Four-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -43,84 +161,141 @@ Wigma is organized into four strictly layered tiers. Dependencies flow **downwar
 └─────────────────────────────────────────────────┘
 ```
 
-**Key design decisions:**
+Dependencies flow **downward only** — upper layers import from lower layers, never the reverse.
 
-- **Engine runs outside NgZone** — `NgZone.runOutsideAngular()` prevents Angular change detection from firing on every `requestAnimationFrame`, mouse move, or wheel event. Angular signals bridge engine state back to the UI layer on demand.
-- **Immutable + Mutable variants** — Hot-path math classes (`Vec2`, `Matrix2D`, `Bounds`) have both immutable (safe, allocating) and mutable (zero-alloc, in-place) variants. The engine's inner loops use mutable variants; UI-facing APIs expose immutable ones.
-- **rbush is the sole spatial index** — No quadtree, no grid. The R-tree provides $O(\log n)$ range queries with a well-tuned branching factor ($M = 9$).
-- **Dirty flag propagation** — Nodes carry `transform`, `render`, and `bounds` dirty flags that propagate parent → children. The render pipeline skips frames when nothing is dirty (idle detection).
-- **Center-pivot transforms** — Node transforms compose around local geometric center so rotate/scale handles and render transforms remain consistent.
-- **Anchor-aware scaling** — Scale operations can pin any of 9 anchor positions (`top-left` … `bottom-right`) from the Transform panel.
+### Rendering Pipeline
+
+The `RenderPipeline` runs a 6-step frame lifecycle:
+
+1. **Dirty Check** → Skip frame if nothing changed (idle detection)
+2. **Transform Update** → Recompute world matrices for dirty nodes
+3. **Spatial Update** → Sync R-tree entries for moved/resized nodes
+4. **Viewport Culling** → Query R-tree for nodes in visible bounds
+5. **Sync Renderers** → Create/update/destroy PixiJS display objects
+6. **Clear Flags** → Reset dirty flags for next frame
+
+### Tool System
+
+20+ tools following a lifecycle pattern: `onActivate() → [onPointerDown → onPointerMove → onPointerUp]* → onDeactivate()`
+
+| Tool      | Key       | Behavior                                              |
+| --------- | --------- | ----------------------------------------------------- |
+| Select    | V         | Click, shift-click, marquee rubber-band, drag-move   |
+| Hand      | H         | Drag to pan viewport                                  |
+| Scale     | K         | Anchor-aware scaling                                  |
+| Frame     | F         | Draw frame containers                                 |
+| Rectangle | R         | Draw rectangles                                       |
+| Ellipse   | O         | Draw ellipses                                         |
+| Polygon   | —         | Configurable side count                               |
+| Star      | —         | Configurable points & inner radius                    |
+| Line      | L         | Draw lines                                            |
+| Arrow     | A         | Draw arrows                                           |
+| Pen       | P         | Bézier paths (click = sharp, drag = smooth)           |
+| Pencil    | B         | Freehand drawing                                      |
+| Text      | T         | On-canvas text editing                                |
+| Image     | I         | Place image                                           |
+| Video     | Shift+V   | Place video                                           |
+| Comment   | C         | Place comment                                         |
+| Zoom      | Z         | Click zoom in, Alt+click zoom out                     |
+
+### Command Pattern & Undo/Redo
+
+Every state mutation flows through the `HistoryService`:
+
+- **Undo stack:** max 200 commands
+- **Redo stack:** cleared on any new command
+- **Temporal merging:** Consecutive compatible commands within 300ms merge (e.g., drag moves accumulate into a single undo step)
+- **Commands:** `MoveNodeCommand`, `ResizeNodeCommand`, `CreateNodeCommand`, `DeleteNodeCommand`, `ModifyPropertyCommand`, `GroupNodesCommand`, `ReorderNodeCommand`, `BatchCommand`
+
+### Scene Graph
+
+All visual elements extend `BaseNode` with properties: `id`, `type`, `name`, `x`, `y`, `width`, `height`, `rotation`, `scaleX`, `scaleY`, `fill`, `stroke`, `opacity`, `visible`, `locked`.
+
+**Node types:** `rectangle`, `ellipse`, `polygon`, `star`, `line`, `arrow`, `text`, `image`, `video`, `path`, `group`
+
+**Dirty flags** (`transform`, `render`, `bounds`) propagate from parent to children automatically.
+
+### Algorithms & Data Structures
+
+- **R-tree spatial index** (rbush): $O(\log n)$ range queries, branching factor $M = 9$
+- **Two-phase hit testing:** Broad (R-tree query) → Narrow (per-shape math)
+- **Ray-casting point-in-polygon:** $O(v)$ per polygon
+- **De Casteljau / Newton-Raphson:** Bézier evaluation and nearest-point computation
+- **Adaptive Bézier subdivision:** LOD-based curve flattening
+- **Arc length:** Gauss-Legendre quadrature
 
 ---
 
-## Directory Structure
+## Backend
 
+> Full documentation: [`backend/README.md`](backend/README.md)
+
+### C++ WebSocket Server
+
+A high-performance relay server built with uWebSockets and compiled as C++20:
+
+| Class              | Responsibility                                                |
+|--------------------|---------------------------------------------------------------|
+| `WsServer`         | uWebSockets event loop, message dispatch, lifecycle           |
+| `RoomManager`      | $O(1)$ room lookup by project ID, lazy create/destroy         |
+| `Room`             | Peer set, zero-copy broadcast, user ID mapping                |
+| `JwtVerifier`      | HS256 verification via OpenSSL HMAC, expiry checking          |
+| `MessageCodec`     | Binary encode/decode (1-byte prefix), JSON control messages   |
+| `SupabaseClient`   | REST API calls to Supabase (service-role key, bypasses RLS)   |
+| `YjsPersistence`   | Load snapshots + updates, append updates, compact             |
+| `Config`           | Reads all settings from `std::getenv()`                       |
+
+### WebSocket Protocol
+
+**Binary frames (Yjs data):**
+
+| Byte 0 | Type        | Direction       | Persisted? |
+|--------|-------------|-----------------|------------|
+| `0x01` | yjs-sync    | Server → Client | —          |
+| `0x02` | yjs-update  | Bidirectional   | Yes        |
+| `0x03` | awareness   | Bidirectional   | No         |
+
+**JSON text frames (control):**
+
+| Type           | Direction       | Fields                          |
+|----------------|----------------|---------------------------------|
+| `join`         | Client → Server | `projectId`, `token`            |
+| `joined`       | Server → Client | `userId`, `peers[]`             |
+| `peer-joined`  | Server → Client | `userId`                        |
+| `peer-left`    | Server → Client | `userId`                        |
+| `error`        | Server → Client | `code`, `message`               |
+| `ping` / `pong`| Bidirectional   | —                               |
+
+### Docker Deployment
+
+```bash
+cd backend
+docker compose up --build -d
 ```
-src/app/
-├── engine/                    # Pure OOP engine (zero Angular deps)
-│   ├── canvas-engine.ts       # Main entry point, wires all subsystems
-│   ├── interaction/           # DOM event → engine pointer events
-│   │   ├── interaction-manager.ts
-│   │   ├── hit-tester.ts      # Two-phase broad + narrow hit testing
-│   │   ├── snap-engine.ts     # Binary-search snap guides
-│   │   ├── alignment-index.ts # Bucketed hashmap snap alignment
-│   │   ├── guide-state.ts     # Alignment guide visual state
-│   │   └── drag-handler.ts    # Batch drag with deferred spatial updates
-│   ├── pools/                 # Object pools for Graphics, Sprite, Container, Text
-│   ├── rendering/
-│   │   ├── renderers/         # Per-node-type PixiJS renderers (12 types)
-│   │   ├── overlays/          # Selection, grid, guide, cursor overlays
-│   │   ├── node-renderer.registry.ts
-│   │   ├── render-pipeline.ts # 6-step frame lifecycle
-│   │   └── render-manager.ts  # Dirty-only render loop, skips inactive pages
-│   ├── scene-graph/
-│   │   ├── base-node.ts       # Abstract base with dirty flags
-│   │   ├── rectangle-node.ts, ellipse-node.ts, polygon-node.ts, …
-│   │   ├── image-node.ts      # Image node with TextureStore integration
-│   │   ├── group-node.ts      # Recursive bounds union
-│   │   └── scene-graph-manager.ts  # Flat Map + tree, batch event coalescing
-│   ├── selection/
-│   │   ├── selection-manager.ts  # Cached selectedNodeIds
-│   │   ├── selection-box.ts   # Rubber-band marquee
-│   │   └── alignment.ts       # Align/distribute algorithms
-│   ├── spatial/
-│   │   ├── spatial-index.ts   # rbush R-tree facade with bulk updateBatch()
-│   │   └── bounds-calculator.ts
-│   └── viewport/
-│       ├── camera.ts          # View/inverse matrices
-│       ├── zoom-controller.ts # Lerped zoom animation
-│       └── viewport-manager.ts
-├── tools/                     # OOP tools + Angular ToolManagerService
-│   ├── base-tool.ts
-│   ├── select-tool.ts         # Click/shift-click/marquee/drag state machine
-│   ├── rectangle-tool.ts, ellipse-tool.ts, polygon-tool.ts, …
-│   ├── pen-tool.ts            # Bézier path: click=sharp, drag=smooth
-│   └── tool-manager.service.ts
-├── core/
-│   ├── commands/              # Command pattern for undo/redo
-│   │   ├── command.interface.ts
-│   │   ├── move-node.command.ts, resize-node.command.ts, …
-│   │   └── batch-command.ts   # Auto-batching with SceneGraphManager
-│   ├── models/                # TypeScript interfaces
-│   └── services/              # Angular services
-│       ├── history.service.ts    # Undo/redo stack (max 200)
-│       ├── clipboard.service.ts  # Copy/cut/paste with deep clone
-│       ├── project.service.ts    # IndexedDB persistence, auto-save
-│       ├── keybinding.service.ts # Keyboard shortcut management
-│       ├── export.service.ts     # PNG/JSON export pipeline
-│       └── loader.service.ts     # Loading state management
-├── panels/                    # Angular UI components (Tailwind)
-│   ├── toolbar/
-│   ├── layers-panel/          # Animated expand/collapse, rename, visibility
-│   ├── properties-panel/      # Sub-sections: transform, fill, stroke, text
-│   ├── menu-bar/
-│   └── context-menu/
-└── shared/
-    ├── math/                  # Vec2, Matrix2D, Bounds, Bézier
-    ├── data-structures/       # ObjectPool<T>
-    └── utils/                 # uid, color-utils, geometry-utils, idb-storage
-```
+
+- **Build stage:** Ubuntu 24.04 + build-essential + cmake + OpenSSL + zlib
+- **Runtime stage:** Ubuntu 24.04 + libssl3 + zlib1g (~80 MB)
+- **Port:** 9001 (configurable via `WS_PORT`)
+
+---
+
+## Shared Types
+
+`shared/types/database.types.ts` is the single source of truth for all data contracts:
+
+| Type               | Purpose                                                      |
+|--------------------|--------------------------------------------------------------|
+| `DbProject`        | Project row (name, description, canvas_config, project_data) |
+| `DbProjectUser`    | Collaboration membership + roles                             |
+| `DbProfile`        | User display name, avatar, cursor color                      |
+| `DbYjsSnapshot`    | Full Yjs document state (compacted binary)                   |
+| `DbYjsUpdate`      | Incremental Yjs binary diffs                                 |
+| `DbMediaFile`      | Image/video metadata                                         |
+| `DocumentData`     | Scene graph snapshot (`{ nodes, canvas }`)                   |
+| `SceneNodeModel`   | Serialized node (geometry, style, children, type-specific data) |
+| `WsClientMessage`  | Client → Server WebSocket message union                      |
+| `WsServerMessage`  | Server → Client WebSocket message union                      |
+| `Database`         | Supabase `createClient<Database>` type map                   |
 
 ---
 
@@ -128,253 +303,206 @@ src/app/
 
 ### Prerequisites
 
-- Node.js ≥ 18
-- npm ≥ 9
+| Tool       | Version | Purpose                           |
+|------------|---------|-----------------------------------|
+| Node.js    | ≥ 18    | Frontend build and dev server     |
+| npm        | ≥ 9     | Package management                |
+| Docker     | ≥ 24    | Backend containerized deployment  |
+| Git        |         | Version control                   |
 
-### Install & Run
+A **Supabase Cloud account** with a project created at [supabase.com](https://supabase.com).
+
+### 1. Clone the repository
 
 ```bash
+git clone https://github.com/Krupanjac/wigma.git
+cd wigma
+```
+
+### 2. Set up the database
+
+In the Supabase Dashboard → SQL Editor, paste and run the migration files in order:
+
+```
+backend/supabase/migrations/001_initial_schema.sql
+backend/supabase/migrations/002_fix_rls_policies.sql
+backend/supabase/migrations/003_add_project_data.sql
+```
+
+This creates all tables, RLS policies, SECURITY DEFINER helpers, triggers, and indexes.
+
+### 3. Configure environment variables
+
+#### Backend
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Fill in values from **Supabase Dashboard → Settings → API**:
+
+| Variable               | Source                                     | Description                                    |
+|------------------------|--------------------------------------------|------------------------------------------------|
+| `SUPABASE_URL`         | Dashboard → Settings → API → Project URL   | Your Supabase project URL                      |
+| `SUPABASE_SERVICE_KEY` | Dashboard → Settings → API → `service_role` | Server-only key that bypasses RLS              |
+| `JWT_SECRET`           | Dashboard → Settings → API → JWT Secret    | Used to verify auth tokens locally             |
+
+#### Frontend
+
+Environment files are at:
+- `frontend/src/environments/environment.ts` (dev)
+- `frontend/src/environments/environment.prod.ts` (prod)
+
+Set `supabaseUrl` and `supabaseKey` (anon key, safe for client-side).
+
+### 4. Start the backend
+
+```bash
+cd backend
+docker compose up --build -d
+```
+
+The server starts on port 9001.
+
+### 5. Start the frontend
+
+```bash
+cd frontend
 npm install
-npm start          # → http://localhost:4200
+npm start
 ```
 
-### Production Build
+Open http://localhost:4200.
 
-```bash
-npx ng build --configuration=production
-```
+### 6. Verify
 
-Output is written to `dist/wigma/`.
+- Create an account via the login page
+- Create a new project from the dashboard
+- Draw shapes on the canvas
+- Press `Ctrl+S` to save to Supabase
+- Refresh — your work loads from the cloud
 
 ---
 
-## Algorithms & Data Structures
+## Database Schema
 
-### R-Tree Spatial Index (rbush)
+Six tables with full Row-Level Security:
 
-The `SpatialIndex` class wraps [rbush](https://github.com/mourner/rbush), an efficient JavaScript R-tree implementation using the R*-tree split strategy.
+| Table             | Purpose                                      | RLS Policy                       |
+|-------------------|----------------------------------------------|----------------------------------|
+| `projects`        | Project metadata, canvas config, project_data| Members read, owner writes       |
+| `project_users`   | Collaboration membership + roles             | Members see co-members           |
+| `profiles`        | User display name, avatar, cursor color      | Public read, self-write          |
+| `yjs_snapshots`   | Full Yjs document state (compacted)          | Members read, editors write      |
+| `yjs_updates`     | Incremental Yjs binary diffs                 | Members read, editors write      |
+| `media_files`     | Image/video metadata (bytes in Storage)      | Members read, editors upload     |
 
-- **Bulk loading:** `O(n log n)` via Sort-Tile-Recursive (STR)
-- **Point / range queries:** `O(log n)` average
-- **Insert / remove / update:** `O(log n)` amortized
-- **Branching factor:** $M = 9$ (default), tuned for typical design document sizes (100–10,000 nodes)
+**Roles:** `owner` · `editor` · `viewer`
 
-A secondary `Map<string, RBushItem>` provides $O(1)$ ID-based lookups for updates and removals.
+**Auto-triggers:**
+- `on_auth_user_created` → inserts a `profiles` row with defaults
+- `on_project_created` → inserts a `project_users` row with role `owner`
 
-### Two-Phase Hit Testing
-
-1. **Broad phase:** Query the R-tree with a small rectangle around the pointer → candidate set $C$
-2. **Narrow phase:** For each candidate in $C$ (sorted by z-order, back-to-front):
-   - **Rectangle:** AABB containment check
-   - **Ellipse:** $(x/r_x)^2 + (y/r_y)^2 \leq 1$
-   - **Polygon / Star:** Ray-casting point-in-polygon ($O(v)$ where $v$ = vertex count)
-   - **Path (Bézier):** Distance to nearest curve segment < stroke tolerance
-   - **Group:** Recursive check on children
-
-### Ray-Casting Point-in-Polygon
-
-```
-crossings = 0
-for each edge (v_i, v_{i+1}):
-    if ray from point crosses edge:
-        crossings++
-point is inside iff crossings is odd
-```
-
-Time complexity: $O(v)$ per polygon.
-
-### De Casteljau's Algorithm (Bézier Evaluation)
-
-Evaluates a cubic Bézier curve at parameter $t \in [0, 1]$:
-
-$$B(t) = (1-t)^3 P_0 + 3(1-t)^2 t\, P_1 + 3(1-t) t^2\, P_2 + t^3 P_3$$
-
-Used for: rendering, hit-testing, subdivision.
-
-### Newton-Raphson Nearest Point on Bézier
-
-Finds the parameter $t^*$ that minimizes $\|B(t) - Q\|^2$:
-
-1. Sample $N$ points to find initial $t_0$
-2. Iterate: $t_{n+1} = t_n - \frac{f'(t_n)}{f''(t_n)}$ where $f(t) = \|B(t) - Q\|^2$
-3. Converges in 4–8 iterations for typical curves
-
-### Adaptive Subdivision
-
-Subdivides a Bézier curve until each segment is "flat enough" (distance from control points to chord < tolerance). Provides Level-of-Detail control:
-
-- **High zoom:** More subdivisions → smoother curves
-- **Low zoom:** Fewer subdivisions → better performance
-
-### Arc Length (Gauss-Legendre Quadrature)
-
-Computes arc length of a cubic Bézier using 5-point Gauss-Legendre quadrature on the speed function $\|B'(t)\|$.
-
-### Bézier Bounding Box
-
-Finds the tight AABB by:
-1. Computing roots of $B'_x(t) = 0$ and $B'_y(t) = 0$ (quadratic)
-2. Evaluating $B(t)$ at roots and endpoints
-3. Taking min/max
+**SECURITY DEFINER helpers** (break circular RLS references):
+- `is_project_member(project_id)` — checks if current user has any role
+- `is_project_editor(project_id)` — checks if current user is owner or editor
+- `get_project_role(project_id)` — returns the user's role
 
 ---
 
-## Rendering Pipeline
+## Authentication & Authorization
 
-The `RenderPipeline` executes a 6-step frame lifecycle:
+### Auth Flow
 
-```
-1. Dirty Check       → Skip frame if nothing changed (idle detection)
-2. Transform Update  → Recompute world matrices for dirty nodes
-3. Spatial Update     → Sync R-tree entries for moved/resized nodes
-4. Viewport Culling   → Query R-tree for nodes in visible bounds
-5. Sync Renderers     → Create/update/destroy PixiJS display objects
-6. Clear Flags        → Reset dirty flags for next frame
-```
+1. **Sign up / Sign in** via Supabase Auth (email + password)
+2. **JWT issued** by Supabase, stored in browser
+3. **Frontend** attaches JWT to all Supabase SDK calls (auto-handled)
+4. **WebSocket** `join` message includes JWT for server-side verification
+5. **C++ server** verifies JWT signature (HS256 via OpenSSL) and checks project membership
 
-**Idle detection:** If no dirty flags are set across the entire scene graph, the frame is skipped entirely — no GPU draw calls, no JS work beyond the check.
+### Session Restore
 
-**Three render groups:**
-- **Content:** Scene graph nodes (rectangles, ellipses, text, etc.)
-- **Overlay:** Selection handles, guides, snap lines
-- **Grid:** Background dot/line grid
+- `onAuthStateChange` fires synchronously on page load — sets `isLoading = false` immediately, then fire-and-forget fetches the user profile
+- 2-second fallback timeout ensures the app never hangs on a spinner
+- Custom `silentNavigatorLock` wraps the Navigator Locks API to suppress `LockAcquireTimeoutError` from Supabase SDK
+- Profile auto-creation: if `fetchProfile()` returns no row, one is inserted automatically
 
----
+### Row-Level Security
 
-## Scene Graph & Node Model
-
-All visual elements extend `BaseNode`, which provides:
-
-| Property       | Type          | Description                        |
-| -------------- | ------------- | ---------------------------------- |
-| `id`           | `string`      | Unique identifier (UUID v4)        |
-| `type`         | `NodeType`    | Discriminant for type narrowing    |
-| `name`         | `string`      | User-facing label                  |
-| `x, y`         | `number`      | Position (setters trigger dirty)   |
-| `width, height`| `number`      | Dimensions                         |
-| `rotation`     | `number`      | Radians                            |
-| `scaleX, scaleY`| `number`     | Non-uniform scale                  |
-| `fill`         | `FillStyle`   | Fill color + visibility            |
-| `stroke`       | `StrokeStyle` | Stroke color, width, visibility    |
-| `opacity`      | `number`      | 0–1                                |
-| `visible`      | `boolean`     | Visibility toggle                  |
-| `locked`       | `boolean`     | Prevents interaction               |
-
-**Node types:** `rectangle`, `ellipse`, `polygon`, `star`, `line`, `arrow`, `text`, `image`, `path`, `group`
-
-**Dirty flags** (`transform`, `render`, `bounds`) propagate from parent to children. Setting `x` or `rotation` on a parent automatically marks all descendants' transforms dirty.
+All database queries from the frontend use the **anon key** and are subject to RLS policies. The C++ backend uses the **service-role key** to bypass RLS for server operations.
 
 ---
 
-## Tool System
+## Real-Time Collaboration
 
-Tools follow a lifecycle pattern:
+### Protocol
 
 ```
-onActivate() → [onPointerDown → onPointerMove → onPointerUp]* → onDeactivate()
+Client A                     Server                     Client B
+  │                            │                            │
+  │── join { projectId, token }→│                            │
+  │                            │←── join { projectId, token }│
+  │←── joined { peers: [B] }──│──→ joined { peers: [A] } ──│
+  │                            │                            │
+  │←── [0x01] yjs-sync ───────│                            │
+  │                            │──→ [0x01] yjs-sync ───────│
+  │                            │                            │
+  │── [0x02] yjs-update ──────│──→ [0x02] yjs-update ──────│
+  │←── [0x02] yjs-update ─────│←── [0x02] yjs-update ──────│
+  │                            │                            │
+  │── [0x03] awareness ────────│──→ [0x03] awareness ───────│
+  │←── [0x03] awareness ───────│←── [0x03] awareness ───────│
 ```
 
-| Tool      | Key       | Behavior                                              |
-| --------- | --------- | ----------------------------------------------------- |
-| Select    | V         | Click, shift-click, marquee rubber-band, drag-move   |
-| Hand      | H         | Drag to pan viewport                                  |
-| Scale     | K         | Dedicated transform mode with anchor-aware scaling    |
-| Frame     | F         | Click + drag to create frame                          |
-| Section   | Shift+S   | Click + drag to create section container              |
-| Slice     | X         | Click + drag to create export slice                   |
-| Rectangle | R         | Click + drag to create rectangle                      |
-| Ellipse   | O         | Click + drag to create ellipse                        |
-| Polygon   | —         | Click + drag, configurable side count                 |
-| Star      | —         | Click + drag, configurable points & inner radius      |
-| Line      | L         | Click + drag to draw line                             |
-| Arrow     | A         | Click + drag to draw arrow                            |
-| Image     | I         | Click to place image placeholder                      |
-| Video     | Shift+V   | Click to place video placeholder                      |
-| Pen       | P         | Click = sharp anchor, drag = smooth (Bézier handles) |
-| Pencil    | B         | Freehand drawing path                                 |
-| Text      | T         | Click to create/edit text                             |
-| Comment   | C         | Click to place comment note                           |
-| Zoom      | Z         | Click to zoom in, alt+click to zoom out               |
+### CRDT Strategy
 
-The `ToolManagerService` (Angular) wraps the OOP tool system and exposes the active tool as a signal for reactive UI updates.
-
-Toolbar groups are organized Figma-style into: Selection, Frame/Section/Slice, Geometry (+ Image/Video), Pen/Pencil, Text, and Comment.
-
-Current grouped-toolbar UX:
-- Split group controls: main icon runs the group's last-used tool, adjacent chevron opens the group menu.
-- Group menus render in a fixed, viewport-anchored overlay above the dock for reliable z-order over canvas.
-- Group icon is dynamic and follows last-selected tool in that group.
-- Draw/Design/Dev mode switch lives in the same centered dock cluster.
-
-Transform/text interaction behavior:
-- Transform handles (resize/rotate) remain available even when non-select tools are active.
-- Resize supports sign inversion when crossing zero (Figma-like flip behavior).
-- Text editing supports on-canvas focused editing overlay plus properties-panel editing.
-- Text resize updates font metrics/box dimensions instead of stretching glyphs via scale distortion.
-- Single-selection dimensions badge (`W`/`H`) is rendered in screen-space below selected object.
-
-Snapping/viewport behavior:
-- Alignment guides are finite reference segments between involved objects (not full-canvas lines).
-- Zoom interactions preserve pointer anchoring for wheel/click zoom.
+- **Yjs** handles conflict-free merging on the client
+- Server stores Yjs updates as opaque blobs — zero interpretation overhead
+- Periodic compaction: server replaces accumulated updates with a single snapshot
+- Awareness channel carries cursor positions and selection state (not persisted)
 
 ---
 
-## Command Pattern & Undo/Redo
+## Persistence Pipeline
 
-Every state mutation goes through the `HistoryService`:
-
-```typescript
-historyService.execute(new MoveNodeCommand(sceneGraph, nodeIds, dx, dy));
-```
-
-- **Undo stack:** max 200 commands
-- **Redo stack:** cleared on any new command
-- **Temporal merging:** Consecutive compatible commands within 300ms are merged (e.g., dragging accumulates move deltas into a single undo step)
-- **BatchCommand:** Wraps multiple commands into a single atomic undo/redo unit
-
-Available commands:
-- `MoveNodeCommand` — mergeable
-- `ResizeNodeCommand`
-- `CreateNodeCommand`
-- `DeleteNodeCommand`
-- `ModifyPropertyCommand` — generic, mergeable
-- `GroupNodesCommand`
-- `ReorderNodeCommand`
-- `BatchCommand`
-
----
-
-## Persistence Layer
-
-Wigma persists the full project document (all pages, nodes, and embedded assets) to the browser's **IndexedDB** via a lightweight `IdbStorage` wrapper.
-
-### Why IndexedDB?
-
-localStorage is limited to ~5–10 MB depending on the browser. Design documents with embedded image/video data URLs can easily exceed this (e.g. 144 MB for ~900 nodes with images). IndexedDB has no practical size limit.
-
-### Storage Architecture
+Wigma uses a dual-layer persistence model:
 
 ```
-┌───────────────────────────────────────────┐
-│  ProjectService                           │
-│  ├── schedulePersist()                    │
-│  │   └── queueMicrotask → fire-and-forget │
-│  ├── writeBrowserSnapshot() → async IDB   │
-│  └── readBrowserSnapshot() → async IDB    │
-│       └── localStorage migration on first │
-│           load for backwards compatibility│
-├───────────────────────────────────────────┤
-│  IdbStorage (shared/utils/idb-storage.ts) │
-│  ├── Database: wigma-db                   │
-│  ├── Object store: snapshots              │
-│  └── Methods: get(key), set(key, value),  │
-│       delete(key)                         │
-└───────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  Layer 1: Browser (IndexedDB)                         │
+│  • Project-scoped keys: wigma.project.v1:<projectId>  │
+│  • Gzip-compressed snapshots                          │
+│  • Auto-save via debounced queueMicrotask             │
+│  • Fire-and-forget async writes                       │
+│  • No size limit (vs 5–10 MB localStorage)            │
+└───────────────────────┬───────────────────────────────┘
+                        │ Ctrl+S / explicit save
+                        ▼
+┌───────────────────────────────────────────────────────┐
+│  Layer 2: Supabase Cloud (PostgreSQL)                 │
+│  • project_data JSONB column on projects table        │
+│  • Stores full DocumentData { nodes, canvas }         │
+│  • Metadata sync: name, description                   │
+│  • Thumbnail generation (480px max, WebGL clamped)    │
+│  • All queries wrapped with 10–15s timeouts           │
+└───────────────────────────────────────────────────────┘
 ```
 
-- **Auto-save:** Scene graph events trigger `schedulePersist()`, which debounces via `queueMicrotask` and writes asynchronously without blocking the main thread.
-- **Migration:** On first load, if the old `localStorage` snapshot exists, it is read, migrated to IndexedDB, and the localStorage key is removed.
-- **Fire-and-forget writes:** `writeBrowserSnapshot()` is async but not awaited — persistence never blocks the UI.
+### Save Flow (Ctrl+S)
+
+1. Serialize scene graph → `DocumentData`
+2. Upload `project_data` JSONB to Supabase
+3. Sync metadata delta (name, description) if changed
+4. Generate 480px thumbnail (WebGL MAX_TEXTURE_SIZE clamped)
+5. Write browser snapshot to IndexedDB
+
+### Load Flow (open project)
+
+1. Fetch project metadata from Supabase
+2. Load `project_data` from Supabase
+3. Deserialize nodes → reconstruct scene graph
+4. If Supabase fails, fall back to IndexedDB snapshot
 
 ---
 
@@ -385,21 +513,18 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 | NgZone escape               | Engine runs outside Angular, no CD on rAF/mouse/wheel    |
 | Dirty flag propagation      | Skip unchanged subtrees in transform/render updates      |
 | Idle frame detection        | Skip entire frame when nothing is dirty                  |
-| Dirty-only render loop      | Skip non-active-page nodes, inline dirty flag clearing   |
 | R-tree viewport culling     | Only render nodes within visible bounds                  |
-| Batch spatial updates       | `updateBatch()` — bulk R-tree rebuild for ≥10 nodes      |
-| Batch event coalescing      | `beginBatch()`/`endBatch()` defers hierarchy-changed events until entire operation completes |
-| BatchCommand auto-batching  | `BatchCommand` wraps execute/undo in begin/endBatch to prevent O(N×M) cascading |
-| Debounced persistence       | `schedulePersist()` uses queueMicrotask — one write per microtask tick |
-| Debounced layers panel      | `refreshNodes()` debounced via queueMicrotask, skips property-only events |
-| Alignment skip during drag  | Alignment index rebuild deferred during active drag       |
-| Object pools                | Reuse PixiJS Graphics/Sprite/Container/Text objects in renderers and overlays |
+| Batch spatial updates       | Bulk R-tree rebuild for ≥10 simultaneous node updates    |
+| Batch event coalescing      | `beginBatch()`/`endBatch()` defers hierarchy events      |
+| Object pools                | Reuse PixiJS Graphics/Sprite/Container/Text objects      |
 | Immutable + mutable math    | Zero-alloc inner loops with MutableVec2/Matrix2D/Bounds  |
 | Adaptive Bézier subdivision | Fewer vertices at low zoom, more at high zoom            |
-| OnPush change detection     | All Angular components use OnPush                        |
-| Signal-based reactivity     | Computed signals replace manual subscriptions            |
-| IndexedDB persistence       | Async fire-and-forget writes to IndexedDB (no localStorage size limit) |
-| Texture deduplication       | TextureStore caches image/video textures by data URL hash |
+| OnPush + signals            | All components use OnPush; computed signals replace subs |
+| Query timeouts              | All Supabase calls wrapped with `Promise.race` timeouts  |
+| Texture deduplication       | TextureStore caches textures by data URL hash            |
+| WebGL texture clamping      | Export/thumbnail respects GPU MAX_TEXTURE_SIZE            |
+| Debounced persistence       | `queueMicrotask` — one browser write per microtask tick  |
+| Zero-copy WS broadcast      | C++ server forwards binary payloads without deserialization |
 
 ---
 
@@ -407,6 +532,7 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 
 | Shortcut          | Action          |
 | ----------------- | --------------- |
+| `Ctrl+S`          | Save to cloud   |
 | `Ctrl+Z`          | Undo            |
 | `Ctrl+Shift+Z`    | Redo            |
 | `Ctrl+C`          | Copy            |
@@ -441,13 +567,36 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 
 ## Tech Stack
 
+### Frontend
+
 | Technology     | Version | Purpose                              |
 | -------------- | ------- | ------------------------------------ |
 | Angular        | 21.1.4  | UI framework, signals, DI, routing   |
 | PixiJS         | 8.16    | GPU-accelerated 2D canvas rendering  |
 | Tailwind CSS   | 4.1     | Utility-first styling (PostCSS)      |
 | rbush          | 4.0     | R-tree spatial index                 |
+| Supabase JS    | 2.95    | Auth, DB, Storage client SDK         |
+| Yjs            | 13.6    | CRDT for conflict-free collaboration |
+| TypeScript     | 5.9     | Type safety throughout               |
 | IndexedDB      | —       | Browser persistence (no size limit)  |
-| TypeScript     | 5.9.3   | Type safety throughout               |
+
+### Backend
+
+| Technology              | Version | Purpose                          |
+|-------------------------|---------|----------------------------------|
+| C++                     | 20      | Server language                  |
+| uWebSockets             | latest  | High-performance WebSocket server|
+| nlohmann/json           | 3.11.3  | JSON parsing for control messages|
+| OpenSSL                 | ≥ 3.0   | HMAC-SHA256 for JWT verification |
+| zlib                    |         | WebSocket per-message deflate    |
+| Docker                  | ≥ 24    | Containerized deployment         |
+
+### Cloud
+
+| Service           | Purpose                                      |
+|-------------------|----------------------------------------------|
+| Supabase Auth     | JWT-based authentication (email + OAuth)     |
+| Supabase Database | PostgreSQL with Row-Level Security           |
+| Supabase Storage  | Media file hosting (images, videos)          |
 
 ---
