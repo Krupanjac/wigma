@@ -663,6 +663,7 @@ export class ProjectService {
       if (
         event.type === 'node-removed' ||
         event.type === 'node-changed' ||
+        event.type === 'nodes-changed' ||
         event.type === 'hierarchy-changed' ||
         event.type === 'node-reordered'
       ) {

@@ -25,6 +25,7 @@ target_include_directories(uSockets PUBLIC deps/uWebSockets/uSockets/src)
 
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(CURL REQUIRED)
 target_link_libraries(uSockets PUBLIC OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
 
 # uWebSockets headers
@@ -54,6 +55,7 @@ target_include_directories(wigma-ws-server PRIVATE src)
 target_link_libraries(wigma-ws-server PRIVATE
   uWebSockets
   nlohmann_json
+  CURL::libcurl
   pthread
 )
 

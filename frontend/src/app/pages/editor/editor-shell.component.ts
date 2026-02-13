@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { EditorComponent } from '../../editor.component';
 import { ProjectApiService } from '../../core/services/project-api.service';
 import { ProjectService } from '../../core/services/project.service';
+import { CollabProvider } from '../../core/services/collab-provider.service';
 import { LoaderService } from '../../core/services/loader.service';
 import type { DbProject } from '@wigma/shared';
 
@@ -47,6 +48,7 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   private readonly projectApi = inject(ProjectApiService);
   private readonly projectService = inject(ProjectService);
   private readonly loader = inject(LoaderService);
+  private readonly collabProvider = inject(CollabProvider);
 
   readonly isLoading = signal(true);
   readonly errorMessage = signal<string | null>(null);
@@ -67,6 +69,7 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.collabProvider.detach();
     if (this.hideLoader) { this.hideLoader(); this.hideLoader = null; }
     this.projectService.clearRemoteProject();
   }
@@ -78,7 +81,25 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   private async loadProject(id: string): Promise<void> {
     this.hideLoader = this.loader.show('Loading project…');
     try {
-      const { data, error } = await this.projectApi.getProject(id);
+      let { data, error } = await this.projectApi.getProject(id);
+
+      // If the project is link-shared but the user isn't a member yet,
+      // getProject succeeds (updated RLS allows it). Auto-join the user
+      // so they get full access to yjs, media, etc.
+      if (data?.link_sharing) {
+        await this.projectApi.joinViaLink(id);
+      }
+
+      // If getProject failed (e.g. RLS blocked before migration runs),
+      // try auto-joining first, then retry.
+      if (error && error.includes('Cannot coerce')) {
+        const { joined } = await this.projectApi.joinViaLink(id);
+        if (joined) {
+          const retry = await this.projectApi.getProject(id);
+          data = retry.data;
+          error = retry.error;
+        }
+      }
 
       if (error || !data) {
         this.errorMessage.set(error ?? 'Project not found');
@@ -134,5 +155,8 @@ export class EditorShellComponent implements OnInit, OnDestroy {
 
     // Now load the remote data
     await this.projectService.loadFromRemote(projectId);
+
+    // Start real-time collaboration
+    this.collabProvider.connect(projectId);
   }
 }

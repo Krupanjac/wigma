@@ -2,7 +2,7 @@ FROM ubuntu:24.04 AS builder
 
 RUN apt-get update && apt-get install -y \
   build-essential cmake git \
-  libssl-dev zlib1g-dev \
+  libssl-dev zlib1g-dev libcurl4-openssl-dev \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -24,7 +24,7 @@ RUN cmake -S ws-server -B ws-server/build -DCMAKE_BUILD_TYPE=Release && \
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y \
-  libssl3 zlib1g ca-certificates \
+  libssl3 zlib1g libcurl4 ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/ws-server/build/wigma-ws-server /usr/local/bin/

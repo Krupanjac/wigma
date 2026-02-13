@@ -97,7 +97,10 @@ export class CollaborationService implements OnDestroy {
 
   /** Send a Yjs update to the server. */
   sendYjsUpdate(data: Uint8Array): void {
-    if (!this.ws || this.state() !== 'connected') return;
+    if (!this.ws || this.state() !== 'connected') {
+      console.warn('[WS] sendYjsUpdate DROPPED — ws:', !!this.ws, 'state:', this.state());
+      return;
+    }
     const frame = new Uint8Array(1 + data.length);
     frame[0] = 0x02; // MessageType::YjsUpdate
     frame.set(data, 1);
@@ -150,7 +153,8 @@ export class CollaborationService implements OnDestroy {
         }
       };
 
-      this.ws.onerror = () => {
+      this.ws.onerror = (ev) => {
+        console.error('[WS] ❌ WebSocket error:', ev);
         this.error.set('Connection error');
       };
 
@@ -190,6 +194,7 @@ export class CollaborationService implements OnDestroy {
           break;
 
         case 'error':
+          console.error('[WS] ❌ Server error:', msg.code, msg.message);
           this.error.set(`${msg.code}: ${msg.message}`);
           break;
 

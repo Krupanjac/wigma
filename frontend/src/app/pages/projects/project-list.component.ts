@@ -19,7 +19,7 @@ import type { DbProject } from '@wigma/shared';
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <h1 class="text-xl font-bold tracking-tight">Wigma</h1>
           <div class="flex items-center gap-4">
-            <span class="text-sm text-neutral-400">{{ auth.profile()?.display_name || auth.user()?.email }}</span>
+            <span class="text-sm text-neutral-400">{{ auth.displayName() || auth.user()?.email }}</span>
             <button
               (click)="auth.signOut()"
               class="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors"

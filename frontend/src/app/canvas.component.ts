@@ -13,6 +13,7 @@ import { CanvasEngine } from './engine/canvas-engine';
 import { TextNode } from './engine/scene-graph/text-node';
 import { Vec2 } from './shared/math/vec2';
 import { colorToCss } from './shared/utils/color-utils';
+import { CursorOverlayComponent } from './panels/cursor-overlay/cursor-overlay.component';
 
 /**
  * CanvasComponent — hosts the PixiJS rendering surface.
@@ -22,7 +23,7 @@ import { colorToCss } from './shared/utils/color-utils';
  */
 @Component({
   selector: 'app-canvas',
-  imports: [],
+  imports: [CursorOverlayComponent],
   templateUrl: './canvas.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

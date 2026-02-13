@@ -62,6 +62,8 @@ export interface DbProject {
   thumbnail_path: string | null;
   /** Full document scene graph (nodes, layers, geometry). null = empty project. */
   project_data: DocumentData | null;
+  /** Whether anyone with the link can access this project. */
+  link_sharing: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -110,14 +112,7 @@ export interface DbMediaFile {
   created_at: string;
 }
 
-export interface DbProfile {
-  id: string;
-  display_name: string;
-  avatar_url: string | null;
-  cursor_color: string;
-  created_at: string;
-  updated_at: string;
-}
+// DbProfile removed — user data comes from Supabase auth.users (user_metadata).
 
 // ── Scene Node Model (shared between FE persistence and Yjs CRDT) ────────────
 
@@ -170,7 +165,7 @@ export type ProjectInsert = Pick<DbProject, 'name' | 'owner_id'> &
   Partial<Pick<DbProject, 'description' | 'version' | 'canvas_config' | 'thumbnail_path'>>;
 
 export type ProjectUpdate = Partial<
-  Pick<DbProject, 'name' | 'description' | 'canvas_config' | 'thumbnail_path' | 'project_data'>
+  Pick<DbProject, 'name' | 'description' | 'canvas_config' | 'thumbnail_path' | 'project_data' | 'link_sharing'>
 >;
 
 export type ProjectUserInsert = Pick<DbProjectUser, 'project_id' | 'user_id'> &
@@ -182,7 +177,7 @@ export type MediaFileInsert = Pick<
 > &
   Partial<Pick<DbMediaFile, 'size_bytes' | 'width' | 'height'>>;
 
-export type ProfileUpdate = Partial<Pick<DbProfile, 'display_name' | 'avatar_url' | 'cursor_color'>>;
+// ProfileUpdate removed — user metadata is updated via supabase.auth.updateUser().
 
 // ── WebSocket Protocol Messages ──────────────────────────────────────────────
 
@@ -232,11 +227,7 @@ export interface Database {
         Insert: MediaFileInsert;
         Update: never;
       };
-      profiles: {
-        Row: DbProfile;
-        Insert: Pick<DbProfile, 'id'> & Partial<Omit<DbProfile, 'id' | 'created_at' | 'updated_at'>>;
-        Update: ProfileUpdate;
-      };
+
     };
     Enums: {
       project_role: ProjectRole;
