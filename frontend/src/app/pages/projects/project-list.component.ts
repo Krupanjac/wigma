@@ -122,8 +122,11 @@ import type { DbProject } from '@wigma/shared';
                 <!-- Info -->
                 <div class="p-3">
                   <p class="text-sm font-medium truncate">{{ project.name }}</p>
+                  @if (project.description) {
+                    <p class="text-xs text-neutral-400 mt-0.5 truncate">{{ project.description }}</p>
+                  }
                   <p class="text-xs text-neutral-500 mt-0.5">
-                    {{ formatDate(project.updated_at) }}
+                    Edited {{ formatDate(project.updated_at) }}
                   </p>
                 </div>
               </div>

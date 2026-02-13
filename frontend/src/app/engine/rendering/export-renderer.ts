@@ -4,6 +4,9 @@ import { BaseNode } from '../scene-graph/base-node';
 import { RenderManager } from './render-manager';
 import { MutableBounds } from '@shared/math/bounds';
 
+/** Safe max texture dimension — most GPUs support at least 4096. */
+const FALLBACK_MAX_TEXTURE = 4096;
+
 /**
  * Export options for rendering a page region to an image.
  */
@@ -132,6 +135,9 @@ export class ExportRenderer {
     const exportW = contentBounds.width + padding * 2;
     const exportH = contentBounds.height + padding * 2;
 
+    // Clamp scale to stay within WebGL texture limits
+    const safeScale = this.clampScale(app, exportW, exportH, scale);
+
     // 2. Save current world container state
     const savedX = worldContainer.position.x;
     const savedY = worldContainer.position.y;
@@ -155,7 +161,7 @@ export class ExportRenderer {
       const base64 = await app.renderer.extract.base64({
         target: app.stage,
         frame: new Rectangle(0, 0, exportW, exportH),
-        resolution: scale,
+        resolution: safeScale,
         format: pixiFormat,
         quality,
         clearColor: includeBackground && background != null
@@ -203,6 +209,8 @@ export class ExportRenderer {
     const exportW = contentBounds.width + padding * 2;
     const exportH = contentBounds.height + padding * 2;
 
+    const safeScale = this.clampScale(app, exportW, exportH, scale);
+
     const savedX = worldContainer.position.x;
     const savedY = worldContainer.position.y;
     const savedScaleX = worldContainer.scale.x;
@@ -218,7 +226,7 @@ export class ExportRenderer {
       const canvas = app.renderer.extract.canvas({
         target: app.stage,
         frame: new Rectangle(0, 0, exportW, exportH),
-        resolution: scale,
+        resolution: safeScale,
         clearColor: includeBackground && background != null
           ? background
           : 0x00000000,
@@ -274,5 +282,46 @@ export class ExportRenderer {
     for (let i = 1; i < app.stage.children.length; i++) {
       app.stage.children[i].visible = visible;
     }
+  }
+
+  // ── Size-safety helpers ────────────────────────────────────
+
+  /**
+   * Query the GPU's MAX_TEXTURE_SIZE and reduce scale so the output
+   * pixel dimensions never exceed it.
+   *
+   * For example, a 10 000 × 8 000 px content region at scale 2 would
+   * need a 20 000 × 16 000 texture.  If MAX_TEXTURE_SIZE is 16 384,
+   * the scale is reduced to 16 384 / 10 000 ≈ 1.638 so the longest
+   * axis fits.
+   */
+  private clampScale(app: Application, w: number, h: number, requestedScale: number): number {
+    const maxTex = this.getMaxTextureSize(app);
+    const maxPixelW = w * requestedScale;
+    const maxPixelH = h * requestedScale;
+    const maxPixel = Math.max(maxPixelW, maxPixelH);
+
+    if (maxPixel <= maxTex) return requestedScale;
+
+    // Scale down proportionally so the largest axis fits
+    const clamped = (maxTex / Math.max(w, h)) * 0.95; // 5 % safety margin
+    console.warn(
+      `[ExportRenderer] Content ${w}×${h} at scale ${requestedScale} would produce ` +
+      `${Math.round(maxPixelW)}×${Math.round(maxPixelH)} px — clamping scale to ` +
+      `${clamped.toFixed(3)} (MAX_TEXTURE_SIZE=${maxTex})`,
+    );
+    return Math.max(clamped, 0.01); // never go to zero
+  }
+
+  /** Read MAX_TEXTURE_SIZE from the WebGL context, with fallback. */
+  private getMaxTextureSize(app: Application): number {
+    try {
+      const gl: WebGL2RenderingContext | WebGLRenderingContext | null =
+        (app.renderer as any).gl ?? (app.renderer as any).context?.gl ?? null;
+      if (gl) {
+        return gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+      }
+    } catch { /* ignore */ }
+    return FALLBACK_MAX_TEXTURE;
   }
 }

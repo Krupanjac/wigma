@@ -310,18 +310,22 @@ export class ProjectService {
     }
 
     // Save thumbnail (non-blocking — don't fail the save if thumbnail fails)
-    thumbnailPromise.then(async (thumbnail) => {
-      if (thumbnail) {
-        const { error: thumbError } = await this.projectApi.updateProject(remote.id, {
-          thumbnail_path: thumbnail,
-        });
-        if (thumbError) {
-          console.warn(LOG_PREFIX, 'save — thumbnail update failed:', thumbError);
-        } else {
-          plog('save — thumbnail saved');
+    thumbnailPromise
+      .then(async (thumbnail) => {
+        if (thumbnail) {
+          const { error: thumbError } = await this.projectApi.updateProject(remote.id, {
+            thumbnail_path: thumbnail,
+          });
+          if (thumbError) {
+            console.warn(LOG_PREFIX, 'save — thumbnail update failed:', thumbError);
+          } else {
+            plog('save — thumbnail saved');
+          }
         }
-      }
-    });
+      })
+      .catch((e) => {
+        console.warn(LOG_PREFIX, 'save — thumbnail generation error (ignored):', e);
+      });
 
     this._isDirty.set(false);
     plog('save — remote success');
@@ -330,8 +334,12 @@ export class ProjectService {
 
   /**
    * Generate a small thumbnail of the active page as a data URL.
+   * Automatically scales down so the longest axis is at most
+   * THUMBNAIL_MAX_PX pixels — safe for any canvas size.
    * Returns null if there's no content to render.
    */
+  private static readonly THUMBNAIL_MAX_PX = 480;
+
   private async generateThumbnail(): Promise<string | null> {
     if (!this.engine) return null;
 
@@ -344,16 +352,28 @@ export class ProjectService {
         this.engine.renderManager,
       );
 
+      // Compute content bounds to determine a safe scale
+      const bounds = exportRenderer.computePageContentBounds(page);
+      if (bounds.isEmpty) return null;
+
+      const padding = 20;
+      const contentW = bounds.width + padding * 2;
+      const contentH = bounds.height + padding * 2;
+      const longestAxis = Math.max(contentW, contentH);
+
+      // Scale so the longest side = THUMBNAIL_MAX_PX, but never upscale
+      const scale = Math.min(1, ProjectService.THUMBNAIL_MAX_PX / longestAxis);
+
       const thumbnail = await exportRenderer.renderPage(page, {
-        scale: 0.5,           // Low res for thumbnail
+        scale,
         format: 'webp',
         quality: 0.6,
-        padding: 20,
+        padding,
         background: 0x1a1a1a,
         includeBackground: true,
       });
 
-      plog('generateThumbnail — size:', thumbnail.length);
+      plog('generateThumbnail — scale:', scale.toFixed(3), 'size:', thumbnail.length);
       return thumbnail;
     } catch (e) {
       console.warn(LOG_PREFIX, 'generateThumbnail — failed:', e);
