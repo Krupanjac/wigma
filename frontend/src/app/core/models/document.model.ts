@@ -16,6 +16,12 @@ export interface DocumentModel {
     backgroundColor: number;
   };
   nodes: SceneNodeModel[];
+  /**
+   * Content-addressed asset table (hash → data URL).
+   * Large media blobs are stored here once; nodes reference them
+   * via `asset:<hash>` strings in their `data` fields.
+   */
+  assets?: Record<string, string>;
 }
 
 /**

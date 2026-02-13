@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { CanvasEngine } from '../../engine/canvas-engine';
 import { ExportRenderer, ExportOptions, PageContentBounds } from '../../engine/rendering/export-renderer';
 import { LoaderService } from './loader.service';
+import { extractAssets } from '../../shared/utils/asset-dedup';
 
 /**
  * ExportService — exports the active page content to PNG, WebP, or JSON.
@@ -101,14 +102,19 @@ export class ExportService {
 
   /**
    * Export the full scene graph as a plain JSON string.
+   * Media blobs are deduplicated into an `assets` table.
    */
   exportJSON(): string {
     this.assertReady();
-    const nodes = this.engine!.sceneGraph.getAllNodes();
+    const nodes = this.engine!.sceneGraph.getAllNodes()
+      .filter(n => n !== this.engine!.sceneGraph.root)
+      .map(n => n.toJSON());
+
+    const assets = extractAssets(nodes as any[]);
+    const hasAssets = Object.keys(assets).length > 0;
+
     return JSON.stringify(
-      nodes
-        .filter(n => n !== this.engine!.sceneGraph.root)
-        .map(n => n.toJSON()),
+      hasAssets ? { assets, nodes } : { nodes },
       null,
       2
     );

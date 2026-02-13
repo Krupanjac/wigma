@@ -20,6 +20,7 @@ import { Vec2 } from '../../shared/math/vec2';
 import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
 import { IdbStorage } from '../../shared/utils/idb-storage';
 import { ExportRenderer } from '../../engine/rendering/export-renderer';
+import { extractAssets, resolveAssets } from '../../shared/utils/asset-dedup';
 import type { DbProject, DocumentData } from '@wigma/shared';
 import { ProjectApiService } from './project-api.service';
 
@@ -239,6 +240,8 @@ export class ProjectService {
       doc.nodes = [];
     }
     plog('fromJSON — parsed doc pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
+    // Resolve asset references before deserialization
+    resolveAssets(doc.nodes, (doc as any).assets);
     this.loadDocument(doc, false, true);
   }
 
@@ -331,6 +334,7 @@ export class ProjectService {
       const docData: DocumentData = {
         nodes: doc.nodes,
         canvas: doc.canvas,
+        assets: doc.assets,
       };
 
       plog('syncToRemote — project', remote.id, 'pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
@@ -452,6 +456,9 @@ export class ProjectService {
 
     plog('loadFromRemote — loaded', data.nodes.length, 'pages, total nodes:', countNodesDeep(data.nodes));
 
+    // Resolve asset references before deserialization
+    resolveAssets(data.nodes, data.assets);
+
     const remote = this._remoteProject();
     const doc: DocumentModel = {
       id: remote?.id ?? uid(),
@@ -482,6 +489,8 @@ export class ProjectService {
         return false;
       }
       const nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+      // Resolve asset references from deduplicated storage
+      resolveAssets(nodes, (parsed as any).assets);
       const doc: DocumentModel = {
         id: parsed.id ?? uid(),
         name: parsed.name ?? 'Untitled',
@@ -553,6 +562,7 @@ export class ProjectService {
       ...prev,
       updatedAt: new Date().toISOString(),
       nodes: pages,
+      assets: extractAssets(pages),
     });
     plog('refreshDocumentFromEngine — total pages:', pages.length, 'total nodes:', countNodesDeep(pages));
   }

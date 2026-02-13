@@ -70,6 +70,12 @@ export interface DbProject {
 export interface DocumentData {
   nodes: SceneNodeModel[];
   canvas: CanvasConfig;
+  /**
+   * Content-addressed asset table (hash → data URL).
+   * Large media blobs are stored here once; nodes reference them
+   * via `asset:<hash>` strings in their `data` fields.
+   */
+  assets?: Record<string, string>;
 }
 
 export interface DbProjectUser {
@@ -148,6 +154,8 @@ export interface DocumentModel {
   updatedAt: string;
   canvas: CanvasConfig;
   nodes: SceneNodeModel[];
+  /** Content-addressed blob table: hash → data URL. */
+  assets?: Record<string, string>;
 }
 
 export interface PageModel {
