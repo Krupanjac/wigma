@@ -52,6 +52,9 @@ export class RenderManager {
   private _lastEdgeZoom = -1;
   private _lastEdgeSelectionSnapshot: string[] = [];
 
+  /** Node IDs that had dirty.render or dirty.bounds true during this frame. */
+  private _frameDirtyIds = new Set<string>();
+
   constructor(
     private sceneGraph: SceneGraphManager,
     private spatialIndex: SpatialIndex,
@@ -124,6 +127,7 @@ export class RenderManager {
     this.worldContainer.scale.set(cam.zoom, cam.zoom);
 
     // Sync every tracked display object
+    this._frameDirtyIds.clear();
     for (const [id, displayObj] of this.displayObjects) {
       const node = this.sceneGraph.getNode(id);
       if (!node) continue;
@@ -134,6 +138,12 @@ export class RenderManager {
       if (!isActive) {
         node.clearDirtyFlags();
         continue;
+      }
+
+      // Track which nodes had dirty flags BEFORE clearing them,
+      // so overlay methods can know which nodes need redraw.
+      if (node.dirty.render || node.dirty.bounds) {
+        this._frameDirtyIds.add(id);
       }
 
       // Always sync transform (cheap — 6 property sets; dirty flags may
@@ -281,12 +291,11 @@ export class RenderManager {
       }
     }
 
-    // Check if any selected node has render-dirty flag
+    // Check if any selected node was dirty this frame
     let anyNodeDirty = false;
     if (!selectionChanged && !zoomChanged) {
       for (const nodeId of currentIds) {
-        const node = this.sceneGraph.getNode(nodeId);
-        if (node?.dirty.render) { anyNodeDirty = true; break; }
+        if (this._frameDirtyIds.has(nodeId)) { anyNodeDirty = true; break; }
       }
       if (!anyNodeDirty) return; // nothing changed, skip all redraws
     }
@@ -311,8 +320,8 @@ export class RenderManager {
         displayObj.addChild(gfx);
       }
 
-      // Only redraw this node's outline if it's new, dirty, or zoom changed
-      if (!isNew && !zoomChanged && !selectionChanged && !node.dirty.render) continue;
+      // Only redraw this node's outline if it's new, dirty this frame, or zoom changed
+      if (!isNew && !zoomChanged && !selectionChanged && !this._frameDirtyIds.has(nodeId)) continue;
 
       const sx = Math.max(1e-6, Math.abs(node.scaleX));
       const sy = Math.max(1e-6, Math.abs(node.scaleY));

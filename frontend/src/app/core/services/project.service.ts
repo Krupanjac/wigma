@@ -294,73 +294,92 @@ export class ProjectService {
   /**
    * Save the current scene graph to Supabase (remote project).
    * Falls back to saveToBrowser() if not in remote mode.
+   *
+   * The browser snapshot is written immediately. The remote upload to
+   * Supabase runs in the background — the method returns as soon as the
+   * local snapshot is persisted so the user is never blocked waiting for
+   * a network round-trip.
    */
   async save(): Promise<{ error: string | null }> {
     this.refreshDocumentFromEngine();
     const doc = this._document();
     const remote = this._remoteProject();
 
-    // Always persist locally too
+    // Always persist locally first (fast)
     this.sessionActivated = true;
     await this.writeBrowserSnapshot();
+    this._isDirty.set(false);
 
     if (!remote) {
       plog('save — local mode, saved to browser only');
-      this._isDirty.set(false);
       return { error: null };
     }
 
-    const docData: DocumentData = {
-      nodes: doc.nodes,
-      canvas: doc.canvas,
-    };
+    // Fire-and-forget: sync to Supabase in the background
+    this.syncToRemote(remote, doc);
 
-    plog('save — remote project', remote.id, 'pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
-
-    // Generate thumbnail in parallel with saving data
-    const thumbnailPromise = this.generateThumbnail();
-
-    const { error } = await this.projectApi.saveProjectData(remote.id, docData);
-
-    if (error) {
-      console.error(LOG_PREFIX, 'save — remote error:', error);
-      return { error };
-    }
-
-    // Sync project metadata (name, description) to the projects table
-    const metaUpdate: Record<string, string> = {};
-    if (doc.name && doc.name !== remote.name) metaUpdate['name'] = doc.name;
-    if (doc.description !== undefined && doc.description !== remote.description) metaUpdate['description'] = doc.description;
-    if (Object.keys(metaUpdate).length > 0) {
-      const { error: metaError } = await this.projectApi.updateProject(remote.id, metaUpdate as any);
-      if (metaError) {
-        console.warn(LOG_PREFIX, 'save — metadata update failed:', metaError);
-      } else {
-        plog('save — metadata synced:', metaUpdate);
-      }
-    }
-
-    // Save thumbnail (non-blocking — don't fail the save if thumbnail fails)
-    thumbnailPromise
-      .then(async (thumbnail) => {
-        if (thumbnail) {
-          const { error: thumbError } = await this.projectApi.updateProject(remote.id, {
-            thumbnail_path: thumbnail,
-          });
-          if (thumbError) {
-            console.warn(LOG_PREFIX, 'save — thumbnail update failed:', thumbError);
-          } else {
-            plog('save — thumbnail saved');
-          }
-        }
-      })
-      .catch((e) => {
-        console.warn(LOG_PREFIX, 'save — thumbnail generation error (ignored):', e);
-      });
-
-    this._isDirty.set(false);
-    plog('save — remote success');
+    plog('save — queued remote sync for', remote.id);
     return { error: null };
+  }
+
+  /**
+   * Background sync: uploads project data, metadata, and thumbnail to
+   * Supabase. Errors are logged but never block the caller.
+   */
+  private async syncToRemote(remote: DbProject, doc: ReturnType<typeof this._document>): Promise<void> {
+    try {
+      const docData: DocumentData = {
+        nodes: doc.nodes,
+        canvas: doc.canvas,
+      };
+
+      plog('syncToRemote — project', remote.id, 'pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
+
+      // Generate thumbnail in parallel with saving data
+      const thumbnailPromise = this.generateThumbnail();
+
+      const { error } = await this.projectApi.saveProjectData(remote.id, docData);
+
+      if (error) {
+        console.error(LOG_PREFIX, 'syncToRemote — data error:', error);
+        return;
+      }
+
+      // Sync project metadata (name, description) to the projects table
+      const metaUpdate: Record<string, string> = {};
+      if (doc.name && doc.name !== remote.name) metaUpdate['name'] = doc.name;
+      if (doc.description !== undefined && doc.description !== remote.description) metaUpdate['description'] = doc.description;
+      if (Object.keys(metaUpdate).length > 0) {
+        const { error: metaError } = await this.projectApi.updateProject(remote.id, metaUpdate as any);
+        if (metaError) {
+          console.warn(LOG_PREFIX, 'syncToRemote — metadata update failed:', metaError);
+        } else {
+          plog('syncToRemote — metadata synced:', metaUpdate);
+        }
+      }
+
+      // Save thumbnail (non-blocking)
+      thumbnailPromise
+        .then(async (thumbnail) => {
+          if (thumbnail) {
+            const { error: thumbError } = await this.projectApi.updateProject(remote.id, {
+              thumbnail_path: thumbnail,
+            });
+            if (thumbError) {
+              console.warn(LOG_PREFIX, 'syncToRemote — thumbnail update failed:', thumbError);
+            } else {
+              plog('syncToRemote — thumbnail saved');
+            }
+          }
+        })
+        .catch((e) => {
+          console.warn(LOG_PREFIX, 'syncToRemote — thumbnail error (ignored):', e);
+        });
+
+      plog('syncToRemote — success');
+    } catch (e) {
+      console.error(LOG_PREFIX, 'syncToRemote — unexpected error:', e);
+    }
   }
 
   /**
