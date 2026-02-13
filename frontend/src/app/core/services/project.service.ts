@@ -98,10 +98,19 @@ export class ProjectService {
     // Expose a global debug helper on window
     (globalThis as Record<string, unknown>)['__wigmaDebug'] = () => this.debugDump();
 
-    const restored = await this.restoreFromBrowser();
-    plog('init — restored from browser:', restored);
-    if (!restored) {
-      this.newProject('Untitled', false, false);
+    // If a remote project is already set (via EditorShellComponent.setRemoteProject),
+    // skip browser restore — loadFromRemote() will load the correct data.
+    // Only restore from browser for local/offline projects.
+    if (this._remoteProject()) {
+      plog('init — remote project set, skipping browser restore (loadFromRemote will handle it)');
+      // Start with a blank canvas; loadFromRemote overwrites it shortly.
+      this.newProject(this._remoteProject()!.name ?? 'Untitled', false, false);
+    } else {
+      const restored = await this.restoreFromBrowser();
+      plog('init — restored from browser:', restored);
+      if (!restored) {
+        this.newProject('Untitled', false, false);
+      }
     }
   }
 
@@ -800,13 +809,22 @@ export class ProjectService {
     }
   }
 
+  /** Get the project-scoped IndexedDB key. */
+  private get snapshotKey(): string {
+    const projectId = this._remoteProject()?.id;
+    return projectId
+      ? `${ProjectService.STORAGE_KEY}:${projectId}`
+      : ProjectService.STORAGE_KEY;
+  }
+
   private async writeBrowserSnapshot(): Promise<void> {
     try {
       const doc = this._document();
       const json = JSON.stringify(doc);
-      await this.idb.setCompressed(ProjectService.STORAGE_KEY, json);
-      plog('writeBrowserSnapshot — compressed & wrote', json.length, 'chars, pages:', doc.nodes.length,
-           'total nodes:', countNodesDeep(doc.nodes));
+      const key = this.snapshotKey;
+      await this.idb.setCompressed(key, json);
+      plog('writeBrowserSnapshot — compressed & wrote', json.length, 'chars, key:', key,
+           'pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
     } catch (e) {
       console.error(LOG_PREFIX, 'writeBrowserSnapshot error:', e);
     }
@@ -814,23 +832,27 @@ export class ProjectService {
 
   private async readBrowserSnapshot(): Promise<string | null> {
     try {
-      // Try IndexedDB first (auto-detects compressed ArrayBuffer vs plain string)
-      const idbRaw = await this.idb.getDecompressed(ProjectService.STORAGE_KEY);
+      const key = this.snapshotKey;
+
+      // Try project-scoped key in IndexedDB first
+      const idbRaw = await this.idb.getDecompressed(key);
       if (idbRaw) {
-        plog('readBrowserSnapshot — found', idbRaw.length, 'chars in IndexedDB');
+        plog('readBrowserSnapshot — found', idbRaw.length, 'chars in IndexedDB, key:', key);
         return idbRaw;
       }
 
-      // Migrate from localStorage if it exists there
-      const lsRaw = localStorage.getItem(ProjectService.STORAGE_KEY);
-      if (lsRaw) {
-        plog('readBrowserSnapshot — migrating', lsRaw.length, 'bytes from localStorage to IndexedDB');
-        await this.idb.set(ProjectService.STORAGE_KEY, lsRaw);
-        localStorage.removeItem(ProjectService.STORAGE_KEY);
-        return lsRaw;
+      // Migrate from old global localStorage key if it exists and no remote project
+      if (!this._remoteProject()) {
+        const lsRaw = localStorage.getItem(ProjectService.STORAGE_KEY);
+        if (lsRaw) {
+          plog('readBrowserSnapshot — migrating', lsRaw.length, 'bytes from localStorage to IndexedDB');
+          await this.idb.set(key, lsRaw);
+          localStorage.removeItem(ProjectService.STORAGE_KEY);
+          return lsRaw;
+        }
       }
 
-      plog('readBrowserSnapshot — empty');
+      plog('readBrowserSnapshot — empty, key:', key);
       return null;
     } catch (e) {
       console.error(LOG_PREFIX, 'readBrowserSnapshot error:', e);

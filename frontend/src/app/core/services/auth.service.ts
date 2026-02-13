@@ -188,7 +188,7 @@ export class AuthService implements OnDestroy {
           .from('profiles')
           .select('*')
           .eq('id', userId)
-          .single(),
+          .maybeSingle(),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('fetchProfile timed out after 8s')), 8000),
         ),
@@ -201,6 +201,26 @@ export class AuthService implements OnDestroy {
 
       if (result.data) {
         this.profile.set(result.data as unknown as DbProfile);
+        return;
+      }
+
+      // Profile row doesn't exist — auto-create it
+      console.debug('[Auth] No profile found, creating one for', userId);
+      const user = this.user();
+      const { data: created, error: insertErr } = await this.supabaseService.supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          display_name: user?.user_metadata?.['full_name'] ?? user?.email ?? 'User',
+          avatar_url: user?.user_metadata?.['avatar_url'] ?? null,
+        } as any)
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.warn('[Auth] auto-create profile error:', insertErr.message);
+      } else if (created) {
+        this.profile.set(created as unknown as DbProfile);
       }
     } catch (e: any) {
       console.error('[Auth] fetchProfile exception:', e?.message ?? e);
