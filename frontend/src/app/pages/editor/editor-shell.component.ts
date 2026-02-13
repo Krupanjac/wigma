@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { EditorComponent } from '../../editor.component';
 import { ProjectApiService } from '../../core/services/project-api.service';
 import { ProjectService } from '../../core/services/project.service';
+import { CollabProvider } from '../../core/services/collab-provider.service';
 import { LoaderService } from '../../core/services/loader.service';
 import type { DbProject } from '@wigma/shared';
 
@@ -47,6 +48,7 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   private readonly projectApi = inject(ProjectApiService);
   private readonly projectService = inject(ProjectService);
   private readonly loader = inject(LoaderService);
+  private readonly collabProvider = inject(CollabProvider);
 
   readonly isLoading = signal(true);
   readonly errorMessage = signal<string | null>(null);
@@ -67,6 +69,7 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.collabProvider.detach();
     if (this.hideLoader) { this.hideLoader(); this.hideLoader = null; }
     this.projectService.clearRemoteProject();
   }
@@ -134,5 +137,8 @@ export class EditorShellComponent implements OnInit, OnDestroy {
 
     // Now load the remote data
     await this.projectService.loadFromRemote(projectId);
+
+    // Start real-time collaboration
+    this.collabProvider.connect(projectId);
   }
 }

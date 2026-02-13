@@ -110,14 +110,7 @@ export interface DbMediaFile {
   created_at: string;
 }
 
-export interface DbProfile {
-  id: string;
-  display_name: string;
-  avatar_url: string | null;
-  cursor_color: string;
-  created_at: string;
-  updated_at: string;
-}
+// DbProfile removed — user data comes from Supabase auth.users (user_metadata).
 
 // ── Scene Node Model (shared between FE persistence and Yjs CRDT) ────────────
 
@@ -182,7 +175,7 @@ export type MediaFileInsert = Pick<
 > &
   Partial<Pick<DbMediaFile, 'size_bytes' | 'width' | 'height'>>;
 
-export type ProfileUpdate = Partial<Pick<DbProfile, 'display_name' | 'avatar_url' | 'cursor_color'>>;
+// ProfileUpdate removed — user metadata is updated via supabase.auth.updateUser().
 
 // ── WebSocket Protocol Messages ──────────────────────────────────────────────
 
@@ -232,11 +225,7 @@ export interface Database {
         Insert: MediaFileInsert;
         Update: never;
       };
-      profiles: {
-        Row: DbProfile;
-        Insert: Pick<DbProfile, 'id'> & Partial<Omit<DbProfile, 'id' | 'created_at' | 'updated_at'>>;
-        Update: ProfileUpdate;
-      };
+
     };
     Enums: {
       project_role: ProjectRole;

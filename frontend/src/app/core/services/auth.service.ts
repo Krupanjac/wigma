@@ -2,21 +2,24 @@ import { Injectable, signal, computed, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import type { User, Session, AuthChangeEvent, Subscription } from '@supabase/supabase-js';
-import type { DbProfile, ProfileUpdate } from '@wigma/shared';
 
 /**
  * Authentication service — wraps Supabase Auth with Angular signals.
  *
+ * All user data comes from Supabase auth.users (user_metadata).
+ * No separate profiles table is needed.
+ *
  * State management:
  *   - `user` signal: current authenticated user (null = logged out)
  *   - `session` signal: current JWT session (null = no session)
- *   - `profile` signal: user profile from profiles table
+ *   - `displayName` computed: user display name from user_metadata or email
+ *   - `avatarUrl` computed: avatar URL from user_metadata
  *   - `isAuthenticated` computed: boolean shorthand
  *   - `isLoading` signal: true during initial session restoration
  *
  * Auth flow:
  *   1. On init, subscribe to onAuthStateChange
- *   2. On SIGNED_IN → fetch profile, set signals
+ *   2. On SIGNED_IN → set signals
  *   3. On SIGNED_OUT → clear signals, redirect to /login
  *   4. Token refresh handled automatically by Supabase SDK
  */
@@ -28,11 +31,18 @@ export class AuthService implements OnDestroy {
   /** Current session (contains JWT). */
   readonly session = signal<Session | null>(null);
 
-  /** User profile from profiles table. */
-  readonly profile = signal<DbProfile | null>(null);
-
   /** True while restoring session on app load. */
   readonly isLoading = signal(true);
+
+  /** Display name derived from user_metadata or email. */
+  readonly displayName = computed(() => {
+    const u = this.user();
+    if (!u) return null;
+    return u.user_metadata?.['full_name'] ?? u.email?.split('@')[0] ?? 'User';
+  });
+
+  /** Avatar URL from user_metadata. */
+  readonly avatarUrl = computed(() => this.user()?.user_metadata?.['avatar_url'] ?? null);
 
   /** Derived authentication state. */
   readonly isAuthenticated = computed(() => this.user() !== null);
@@ -90,26 +100,19 @@ export class AuthService implements OnDestroy {
     await this.supabaseService.supabase.auth.signOut();
     this.user.set(null);
     this.session.set(null);
-    this.profile.set(null);
     this.router.navigate(['/login']);
   }
 
-  /** Update the user's profile. */
-  async updateProfile(update: ProfileUpdate): Promise<{ error: string | null }> {
-    const userId = this.user()?.id;
-    if (!userId) return { error: 'Not authenticated' };
-
-    const { error } = await (this.supabaseService.supabase
-      .from('profiles') as any)
-      .update(update)
-      .eq('id', userId);
+  /** Update the user's display name / avatar via Supabase Auth user_metadata. */
+  async updateUserMeta(update: { full_name?: string; avatar_url?: string }): Promise<{ error: string | null }> {
+    const { error } = await this.supabaseService.supabase.auth.updateUser({
+      data: update,
+    });
 
     if (!error) {
-      // Refresh profile signal
-      const current = this.profile();
-      if (current) {
-        this.profile.set({ ...current, ...update } as DbProfile);
-      }
+      // Refresh user signal with updated metadata
+      const { data } = await this.supabaseService.supabase.auth.getUser();
+      if (data.user) this.user.set(data.user);
     }
 
     return { error: error?.message ?? null };
@@ -132,21 +135,9 @@ export class AuthService implements OnDestroy {
         this.session.set(session);
         this.user.set(session?.user ?? null);
 
-        if (event === 'SIGNED_OUT') {
-          this.profile.set(null);
-        }
-
-        // Unblock guards and UI IMMEDIATELY — don't wait for profile fetch
+        // Unblock guards and UI IMMEDIATELY
         this.initialSessionHandled = true;
         this.isLoading.set(false);
-
-        // Fetch profile in background (non-blocking)
-        if (
-          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
-          session?.user
-        ) {
-          this.fetchProfile(session.user.id);
-        }
       }
     );
 
@@ -172,58 +163,11 @@ export class AuthService implements OnDestroy {
       } else if (data.session) {
         this.session.set(data.session);
         this.user.set(data.session.user);
-        this.fetchProfile(data.session.user.id);
       }
     } catch (e) {
       console.error('[Auth] restoreSession exception:', e);
     } finally {
       this.isLoading.set(false);
-    }
-  }
-
-  private async fetchProfile(userId: string): Promise<void> {
-    try {
-      const result: { data: any; error: any } = await Promise.race([
-        this.supabaseService.supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('fetchProfile timed out after 8s')), 8000),
-        ),
-      ]);
-
-      if (result.error) {
-        console.warn('[Auth] fetchProfile error:', result.error.message);
-        return;
-      }
-
-      if (result.data) {
-        this.profile.set(result.data as unknown as DbProfile);
-        return;
-      }
-
-      // Profile row doesn't exist — auto-create it
-      console.debug('[Auth] No profile found, creating one for', userId);
-      const user = this.user();
-      const { data: created, error: insertErr } = await this.supabaseService.supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          display_name: user?.user_metadata?.['full_name'] ?? user?.email ?? 'User',
-          avatar_url: user?.user_metadata?.['avatar_url'] ?? null,
-        } as any)
-        .select()
-        .single();
-
-      if (insertErr) {
-        console.warn('[Auth] auto-create profile error:', insertErr.message);
-      } else if (created) {
-        this.profile.set(created as unknown as DbProfile);
-      }
-    } catch (e: any) {
-      console.error('[Auth] fetchProfile exception:', e?.message ?? e);
     }
   }
 }

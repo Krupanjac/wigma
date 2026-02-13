@@ -77,17 +77,6 @@ CREATE TABLE media_files (
 
 CREATE INDEX idx_media_project ON media_files(project_id);
 
--- ── User Profiles (public read, self-write) ──────────────────────────────────
-
-CREATE TABLE profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  display_name TEXT NOT NULL DEFAULT '',
-  avatar_url  TEXT,
-  cursor_color TEXT NOT NULL DEFAULT '#3b82f6',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- ── Auto-update updated_at trigger ──────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -102,10 +91,6 @@ CREATE TRIGGER trg_projects_updated_at
   BEFORE UPDATE ON projects
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
-CREATE TRIGGER trg_profiles_updated_at
-  BEFORE UPDATE ON profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
 -- ── Row-Level Security ──────────────────────────────────────────────────────
 
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
@@ -113,7 +98,6 @@ ALTER TABLE project_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE yjs_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE yjs_updates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media_files ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 -- ── SECURITY DEFINER helpers (bypass RLS to break circular references) ──────
 -- These run as the function owner, so inner queries skip RLS on project_users.
@@ -201,29 +185,7 @@ CREATE POLICY media_insert ON media_files FOR INSERT WITH CHECK (
   is_project_editor(project_id)
 );
 
--- Profiles: anyone can read, self can write
-CREATE POLICY profiles_select ON profiles FOR SELECT USING (true);
-CREATE POLICY profiles_insert ON profiles FOR INSERT WITH CHECK (id = auth.uid());
-CREATE POLICY profiles_update ON profiles FOR UPDATE USING (id = auth.uid());
-
--- ── Auto-create profile on user signup ──────────────────────────────────────
-
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO profiles (id, display_name, avatar_url)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-    NEW.raw_user_meta_data->>'avatar_url'
-  );
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+-- Profiles: removed — user data comes from Supabase auth.users (user_metadata)
 
 -- ── Auto-create project_users entry for owner ───────────────────────────────
 

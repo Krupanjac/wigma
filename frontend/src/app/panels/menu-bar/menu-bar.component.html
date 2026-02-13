@@ -4,4 +4,47 @@
     <span class="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">{{ project.document().name }}</span>
     <span>{{ project.isDirty() ? 'Unsaved changes' : 'Saved' }}</span>
   </div>
+  <div class="flex items-center gap-2">
+    <!-- Peer avatars -->
+    @if (collabProvider.peerCount() > 0) {
+      <div class="flex items-center -space-x-1.5 mr-1">
+        @for (peer of peerAvatars(); track peer.u) {
+          <div
+            class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-zinc-900 text-[10px] font-bold text-white"
+            [style.background-color]="peer.cl"
+            [title]="peer.n"
+          >
+            {{ peer.initial }}
+          </div>
+        }
+        @if (overflowCount() > 0) {
+          <div
+            class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700 text-[10px] font-bold text-zinc-300"
+          >
+            +{{ overflowCount() }}
+          </div>
+        }
+      </div>
+    }
+    <!-- Connection indicator -->
+    @if (collabProvider.isConnected()) {
+      <div class="flex items-center gap-1 rounded-full bg-green-900/30 px-2 py-0.5">
+        <div class="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></div>
+        <span class="text-[10px] text-green-400">Live</span>
+      </div>
+    }
+    <!-- Share button -->
+    @if (project.isRemote()) {
+      <button
+        (click)="showShareDialog.set(!showShareDialog())"
+        class="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 transition-colors"
+      >
+        Share
+      </button>
+    }
+  </div>
 </div>
+
+@if (showShareDialog()) {
+  <app-share-dialog (close)="showShareDialog.set(false)" />
+}

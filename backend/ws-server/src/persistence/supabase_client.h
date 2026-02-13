@@ -5,15 +5,24 @@
 #include <functional>
 #include <optional>
 #include <cstdint>
+#include <curl/curl.h>
 
 /**
  * Minimal Supabase REST client for server-side operations.
  * Uses service-role key for direct DB access (bypasses RLS).
- * Connects via HTTPS to Supabase REST API.
+ * Connects via HTTPS to Supabase REST API using libcurl.
+ *
+ * Thread-safety: a single CURL handle is reused across calls;
+ * callers must serialise access (fine for our single-threaded event loop).
  */
 class SupabaseClient {
 public:
   SupabaseClient(std::string url, std::string service_key);
+  ~SupabaseClient();
+
+  // Non-copyable, movable
+  SupabaseClient(const SupabaseClient&) = delete;
+  SupabaseClient& operator=(const SupabaseClient&) = delete;
 
   struct Response {
     int status_code;
@@ -46,12 +55,16 @@ public:
 private:
   std::string url_;
   std::string service_key_;
+  CURL* curl_ = nullptr;
 
-  /** Perform an HTTP request to Supabase REST API. */
+  /** Perform an HTTP request to Supabase REST API via libcurl. */
   Response request(
     std::string_view method,
     std::string_view path,
     std::string_view body = "",
-    const std::vector<std::pair<std::string, std::string>>& headers = {}
+    const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
   );
+
+  /** libcurl write callback — appends data to a std::string. */
+  static size_t write_callback(char* ptr, size_t size, size_t nmemb, void* userdata);
 };

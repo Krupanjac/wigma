@@ -24,6 +24,7 @@ import { KeybindingService } from './core/services/keybinding.service';
 import { LoaderService } from './core/services/loader.service';
 import { MenuCommandsService } from './panels/menu-bar/menu-commands.service';
 import { ContextMenuService } from './panels/context-menu/context-menu.service';
+import { CollabProvider } from './core/services/collab-provider.service';
 import { Vec2 } from './shared/math/vec2';
 
 @Component({
@@ -50,6 +51,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   private loader = inject(LoaderService);
   private menuCommands = inject(MenuCommandsService);
   private contextMenu = inject(ContextMenuService);
+  private collabProvider = inject(CollabProvider);
 
   engine: CanvasEngine | null = null;
   title = 'wigma';
@@ -92,6 +94,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.exportService.init(this.engine!);
     this.menuCommands.init(this.engine!);
     this.contextMenu.init(this.engine!);
+    this.collabProvider.init(this.engine!);
 
     // Register keybindings
     this.keybinding.init();
@@ -229,6 +232,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.dismissInitLoader?.();
     window.removeEventListener('wigma:canvas-ready', this.onCanvasReady);
+    this.collabProvider.detach();
     void this.project.saveToBrowser();
     this.engine?.dispose();
     this.keybinding.unregisterAll();

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { SupabaseService } from './supabase.service';
 import { AuthService } from './auth.service';
-import type { DbProject, ProjectInsert, ProjectUpdate, DocumentData } from '@wigma/shared';
+import type { DbProject, ProjectInsert, ProjectUpdate, DocumentData, DbProjectUser } from '@wigma/shared';
 
 /**
  * Project API service — CRUD operations for projects via Supabase.
@@ -103,6 +103,104 @@ export class ProjectApiService {
   }
 
   // ── Scene Graph Persistence ───────────────────────────────────────────
+
+  // ── Project Sharing ───────────────────────────────────────────────────
+
+  /** List all collaborators for a project. */
+  async listProjectUsers(projectId: string): Promise<{ data: DbProjectUser[]; error: string | null }> {
+    const { data, error } = await this.withTimeout(
+      this.supa.supabase
+        .from('project_users')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('invited_at', { ascending: true }),
+      10000,
+    );
+
+    return {
+      data: (data as unknown as DbProjectUser[]) ?? [],
+      error: error?.message ?? null,
+    };
+  }
+
+  /** Add a user to a project by email. Resolves email → user ID via RPC. */
+  async addProjectUserByEmail(
+    projectId: string,
+    email: string,
+    role: 'editor' | 'viewer' = 'editor',
+  ): Promise<{ error: string | null }> {
+    // Try to resolve via Supabase RPC (requires a `lookup_user_by_email` function)
+    // Falls back to a clear error if not available.
+    const { data, error: rpcError } = await this.withTimeout(
+      (this.supa.supabase.rpc as any)('lookup_user_by_email', { lookup_email: email }),
+      10000,
+    );
+
+    if (rpcError || !data) {
+      // Graceful fallback — inform user that email invite needs server setup
+      return {
+        error: rpcError?.message ??
+          'Email lookup is not configured. Share the project link instead, or invite by user ID.',
+      };
+    }
+
+    const userId = typeof data === 'string' ? data : (data as any)?.id;
+    if (!userId) return { error: 'No user found with that email address' };
+
+    return this.addProjectUser(projectId, userId, role);
+  }
+
+  /** Add a user to a project by user ID. */
+  async addProjectUser(
+    projectId: string,
+    userId: string,
+    role: 'editor' | 'viewer' = 'editor',
+  ): Promise<{ error: string | null }> {
+    const { error } = await this.withTimeout(
+      this.supa.supabase
+        .from('project_users')
+        .upsert(
+          { project_id: projectId, user_id: userId, role } as any,
+          { onConflict: 'project_id,user_id' },
+        ),
+      10000,
+    );
+
+    return { error: error?.message ?? null };
+  }
+
+  /** Remove a user from a project. */
+  async removeProjectUser(projectId: string, userId: string): Promise<{ error: string | null }> {
+    const { error } = await this.withTimeout(
+      this.supa.supabase
+        .from('project_users')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', userId),
+      10000,
+    );
+
+    return { error: error?.message ?? null };
+  }
+
+  /** Update a collaborator's role. */
+  async updateProjectUserRole(
+    projectId: string,
+    userId: string,
+    role: 'editor' | 'viewer',
+  ): Promise<{ error: string | null }> {
+    const { error } = await this.withTimeout(
+      (this.supa.supabase.from('project_users') as any)
+        .update({ role })
+        .eq('project_id', projectId)
+        .eq('user_id', userId),
+      10000,
+    );
+
+    return { error: error?.message ?? null };
+  }
+
+  // ── Scene Graph Persistence (continued) ───────────────────────────────
 
   /** Save the full document scene graph to the project_data JSONB column. */
   async saveProjectData(id: string, docData: DocumentData): Promise<{ error: string | null }> {
