@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  ws-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9001:9001"
+    environment:
+      WS_PORT: 9001
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      MAX_ROOMS: 1024
+      MAX_PEERS: 64
+      SNAPSHOT_INTERVAL_MS: 60000
+    restart: unless-stopped

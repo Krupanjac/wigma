@@ -19,6 +19,7 @@ import { PathNode, AnchorType, PathAnchor } from '../../engine/scene-graph/path-
 import { Vec2 } from '../../shared/math/vec2';
 import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
 import { IdbStorage } from '../../shared/utils/idb-storage';
+import type { DbProject } from '@wigma/shared';
 
 /* ── Diagnostic logging helper ─────────────────────────────── */
 const LOG_PREFIX = '[Wigma Persist]';
@@ -70,6 +71,15 @@ export class ProjectService {
 
   private _isDirty = signal(false);
 
+  /** Remote project metadata (null = offline/local mode). */
+  private _remoteProject = signal<DbProject | null>(null);
+
+  /** Whether this project is backed by a remote Supabase project. */
+  readonly isRemote = computed(() => this._remoteProject() !== null);
+
+  /** Current remote project (for displaying metadata in UI). */
+  readonly remoteProject = computed(() => this._remoteProject());
+
   readonly document = computed(() => this._document());
   readonly isDirty = computed(() => this._isDirty());
 
@@ -90,6 +100,34 @@ export class ProjectService {
     if (!restored) {
       this.newProject('Untitled', false, false);
     }
+  }
+
+  // ── Remote Project Context ─────────────────────────────────────────────
+
+  /**
+   * Set the remote project context (called by EditorShellComponent).
+   * Updates document metadata to match the remote project.
+   */
+  setRemoteProject(project: DbProject): void {
+    this._remoteProject.set(project);
+
+    // Sync document metadata with remote
+    const doc = this._document();
+    this._document.set({
+      ...doc,
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      canvas: project.canvas_config,
+    });
+
+    plog('setRemoteProject — id:', project.id, 'name:', project.name);
+  }
+
+  /** Clear the remote project context (called on navigation away). */
+  clearRemoteProject(): void {
+    this._remoteProject.set(null);
+    plog('clearRemoteProject');
   }
 
   /** Dump current state to console for debugging. */

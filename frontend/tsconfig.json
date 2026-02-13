@@ -23,7 +23,9 @@
       "@tools/*": ["src/app/tools/*"],
       "@shared/*": ["src/app/shared/*"],
       "@panels/*": ["src/app/panels/*"],
-      "@core/*": ["src/app/core/*"]
+      "@core/*": ["src/app/core/*"],
+      "@wigma/shared": ["../shared/types/index.ts"],
+      "@wigma/shared/*": ["../shared/types/*"]
     }
   },
   "angularCompilerOptions": {
