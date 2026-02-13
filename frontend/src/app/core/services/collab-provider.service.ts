@@ -9,9 +9,7 @@ import type { SceneNodeModel } from '@wigma/shared';
 import {
   SceneOp,
   AwarenessState,
-  encodeSceneOp,
   decodeSceneOp,
-  encodeAwareness,
   decodeAwareness,
 } from '../../shared/collab-protocol';
 
@@ -32,6 +30,13 @@ import { Vec2 } from '@shared/math/vec2';
 
 /* ── Logging ────────────────────────────────────────────────── */
 const LOG = '[Collab]';
+
+/** Count total nodes in a serialized model tree. */
+function countDeep(model: SceneNodeModel): number {
+  let count = 1;
+  for (const child of model.children ?? []) count += countDeep(child);
+  return count;
+}
 
 /* ── Throttle constants ──────────────────────────────────────── */
 const AWARENESS_INTERVAL_MS = 80;  // ~12 Hz cursor updates
@@ -72,15 +77,28 @@ export class CollabProvider implements OnDestroy {
   /** True while applying remote operations — suppresses outbound broadcasts. */
   private _applyingRemote = false;
 
-  /** Pending move throttle state. */
-  private _moveThrottle: ReturnType<typeof setTimeout> | null = null;
-  private _pendingMove: SceneOp | null = null;
+  /**
+   * State cache — snapshot of each node's last-broadcast properties.
+   * Used to compute minimal diffs (only changed properties are sent).
+   * Deep-cloned to avoid reference aliasing with mutable node objects.
+   */
+  private _stateCache = new Map<string, Record<string, unknown>>();
 
-  /** Pending modify throttle state. */
-  private _modifyThrottles = new Map<string, { timer: ReturnType<typeof setTimeout>; op: SceneOp }>();
+  /** Move throttle — accumulates multi-node drag into single delta ops. */
+  private _moveTimer: ReturnType<typeof setTimeout> | null = null;
+  private _moveNodes: BaseNode[] | null = null;
+
+  /** Per-node modify throttle — coalesces property changes at ~20 Hz. */
+  private _modifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Nodes that changed during a throttle window — flushed when timer expires. */
+  private _modifyDirty = new Set<string>();
 
   /** Track cursor position for awareness broadcasts. */
   private _cursorWorld: [number, number] | null = null;
+
+  /** Reusable TextEncoder — avoids allocation per broadcast. */
+  private readonly _encoder = new TextEncoder();
 
   // ── Public signals ─────────────────────────────────────────
 
@@ -122,7 +140,10 @@ export class CollabProvider implements OnDestroy {
     // Track cursor position
     this.setupCursorTracking();
 
-    console.log(LOG, 'initialized with engine');
+    // Snapshot any existing nodes (scene may be loaded before collab connects)
+    this.snapshotAllNodes();
+
+    console.log(LOG, '🔧 initialized with engine, scene listeners:', engine.sceneGraph.nodeCount, 'nodes, cache:', this._stateCache.size, 'entries');
   }
 
   /** Connect to a project room (call after scene graph is loaded). */
@@ -132,13 +153,16 @@ export class CollabProvider implements OnDestroy {
       return;
     }
 
+    // Snapshot all loaded nodes (scene was loaded from Supabase before connect)
+    this.snapshotAllNodes();
+
     // Start awareness broadcasting
     this.startAwareness();
 
     // Connect to the WS room
     this.collab.connect(projectId);
 
-    console.log(LOG, 'connecting to project', projectId);
+    console.log(LOG, '🔌 connecting to project', projectId, '— scene:', this.engine.sceneGraph.nodeCount, 'nodes, cache:', this._stateCache.size, 'entries');
   }
 
   /** Detach from the engine and disconnect. */
@@ -158,6 +182,7 @@ export class CollabProvider implements OnDestroy {
 
     this.stopAwareness();
     this.clearThrottles();
+    this._stateCache.clear();
     this.remotePeers.set(new Map());
     this.engine = null;
 
@@ -176,13 +201,16 @@ export class CollabProvider implements OnDestroy {
   // ── Outbound: Local → Remote ───────────────────────────────
 
   private onLocalSceneEvent(event: SceneEvent): void {
-    if (!this.isConnected()) return;
+    const connected = this.isConnected();
+    console.log(LOG, '📤 scene event:', event.type, 'connected:', connected, 'applyingRemote:', this._applyingRemote);
+    if (!connected) return;
 
     switch (event.type) {
       case 'node-added':
         this.broadcastNodeAdded(event.node);
         break;
       case 'node-removed':
+        this._stateCache.delete(event.node.id);
         this.broadcastOp({ o: 'delete', id: event.node.id });
         break;
       case 'node-changed':
@@ -208,48 +236,147 @@ export class CollabProvider implements OnDestroy {
     const model = this.serializeNodeShallow(node);
     const index = node.parent ? node.parent.children.indexOf(node) : undefined;
     this.broadcastOp({ o: 'create', n: model, p: parentId, i: index });
+
+    // Snapshot the new node so future diffs work
+    this.snapshotNode(node);
   }
 
-  private broadcastNodeChanged(node: BaseNode): void {
-    // Throttle per-node to avoid flooding during drag/slider
-    const existing = this._modifyThrottles.get(node.id);
+  /**
+   * Broadcast a multi-node drag as a single delta `move` op.
+   *
+   * All selected nodes share the same (dx, dy) displacement during drag,
+   * so we compute delta from one node's cached position and send one op
+   * with all IDs. This is >10× smaller than individual full-property modifies.
+   */
+  private broadcastNodesChanged(nodes: BaseNode[]): void {
+    if (nodes.length === 0) return;
 
-    const props: Record<string, unknown> = {};
-    const raw = node.toJSON() as Record<string, unknown>;
-    // Send all mutable properties — compact per-node diff isn't worth the
-    // complexity vs sending 20 numeric fields at 20 Hz.
-    for (const [key, value] of Object.entries(raw)) {
-      if (key === 'children' || key === 'id' || key === 'type') continue;
-      props[key] = value;
-    }
+    const ref = nodes[0];
+    const cached = this._stateCache.get(ref.id);
 
-    const op: SceneOp = { o: 'modify', id: node.id, props };
-
-    if (existing) {
-      existing.op = op; // overwrite pending — only latest matters
+    if (!cached || typeof cached['x'] !== 'number' || typeof cached['y'] !== 'number') {
+      // No cache — fall back to individual modifies (which handle no-cache correctly)
+      console.log(LOG, '📤 broadcastNodesChanged — no cache for ref node', ref.id, ', falling back to individual modifies');
+      for (const n of nodes) this.broadcastNodeChanged(n);
       return;
     }
 
-    // Send immediately, then throttle
-    this.broadcastOp(op);
-    this._modifyThrottles.set(node.id, {
-      op,
-      timer: setTimeout(() => {
-        const entry = this._modifyThrottles.get(node.id);
-        this._modifyThrottles.delete(node.id);
-        if (entry && entry.op !== op) {
-          this.broadcastOp(entry.op);
-        }
-      }, MODIFY_THROTTLE_MS),
-    });
+    const dx = ref.x - (cached['x'] as number);
+    const dy = ref.y - (cached['y'] as number);
+
+    console.log(LOG, '📤 broadcastNodesChanged — nodes:', nodes.length, 'ref:', ref.id, 'dx:', dx.toFixed(2), 'dy:', dy.toFixed(2));
+
+    // Skip negligible movement
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+
+    // Store nodes reference for deferred flush
+    this._moveNodes = nodes;
+
+    if (this._moveTimer) return; // Timer pending — flush will pick up latest
+
+    // Send immediately
+    this.flushMove(dx, dy, nodes);
+
+    // Set timer for deferred updates within the throttle window
+    this._moveTimer = setTimeout(() => {
+      this._moveTimer = null;
+      const pending = this._moveNodes;
+      this._moveNodes = null;
+      if (!pending || pending.length === 0) return;
+
+      // Recompute delta from current cache (updated by the last flush)
+      const r = pending[0];
+      const c = this._stateCache.get(r.id);
+      if (!c || typeof c['x'] !== 'number') return;
+
+      const ddx = r.x - (c['x'] as number);
+      const ddy = r.y - (c['y'] as number);
+      if (Math.abs(ddx) < 0.01 && Math.abs(ddy) < 0.01) return;
+
+      this.flushMove(ddx, ddy, pending);
+    }, MOVE_THROTTLE_MS);
   }
 
-  private broadcastNodesChanged(nodes: BaseNode[]): void {
-    // Batch move path — compute aggregate dx/dy since last broadcast
-    // For simplicity, send individual modifies for batch changes
-    for (const node of nodes) {
-      this.broadcastNodeChanged(node);
+  /** Actually send a move op and update the position cache. */
+  private flushMove(dx: number, dy: number, nodes: BaseNode[]): void {
+    const ids = nodes.map(n => n.id);
+    this.broadcastOp({ o: 'move', ids, dx, dy });
+
+    // Update cached positions
+    for (const n of nodes) {
+      const c = this._stateCache.get(n.id);
+      if (c) {
+        c['x'] = n.x;
+        c['y'] = n.y;
+      }
     }
+  }
+
+  /**
+   * Broadcast a single-node property change with minimal diff.
+   *
+   * Compares the node's current state against a cached snapshot and sends
+   * only the properties that actually changed. This avoids sending fill,
+   * stroke, name, etc. when only x/y changed — reducing false conflicts
+   * and saving bandwidth.
+   */
+  private broadcastNodeChanged(node: BaseNode): void {
+    // If throttled, mark dirty — the timer will re-diff and flush
+    if (this._modifyTimers.has(node.id)) {
+      this._modifyDirty.add(node.id);
+      return;
+    }
+
+    // Compute diff and send
+    const diff = this.computeNodeDiff(node);
+    if (!diff) return;
+
+    this.broadcastOp({ o: 'modify', id: node.id, props: diff });
+
+    // Start throttle window — any changes during this window are deferred
+    this._modifyTimers.set(node.id, setTimeout(() => {
+      this._modifyTimers.delete(node.id);
+      // Flush accumulated changes that arrived during the throttle window
+      if (this._modifyDirty.delete(node.id)) {
+        const n = this.engine?.sceneGraph.getNode(node.id);
+        if (n && !this._applyingRemote) {
+          this.broadcastNodeChanged(n);
+        }
+      }
+    }, MODIFY_THROTTLE_MS));
+  }
+
+  /**
+   * Compute the property diff between a node's current state and its cached
+   * snapshot. Updates the cache to match current state. Returns null if
+   * nothing changed.
+   */
+  private computeNodeDiff(node: BaseNode): Record<string, unknown> | null {
+    const cached = this._stateCache.get(node.id);
+    const current = this.getNodeProps(node);
+
+    if (!cached) {
+      // No cache — send full state, create snapshot
+      this._stateCache.set(node.id, this.deepClone(current));
+      return current;
+    }
+
+    // Compute diff — only changed properties
+    const diff: Record<string, unknown> = {};
+    let hasChanges = false;
+
+    for (const key of Object.keys(current)) {
+      if (!this.propsEqual(cached[key], current[key])) {
+        diff[key] = current[key];
+        // Update cache entry for this property
+        cached[key] = typeof current[key] === 'object' && current[key] !== null
+          ? JSON.parse(JSON.stringify(current[key]))
+          : current[key];
+        hasChanges = true;
+      }
+    }
+
+    return hasChanges ? diff : null;
   }
 
   private broadcastNodeReordered(node: BaseNode): void {
@@ -263,20 +390,26 @@ export class CollabProvider implements OnDestroy {
     });
   }
 
+  /** Encode and send a scene operation via WebSocket. */
   private broadcastOp(op: SceneOp): void {
-    // encodeSceneOp returns [0x02 | JSON], sendYjsUpdate prepends another 0x02.
-    // So we send only the JSON payload — skip the prefix byte.
-    const frame = encodeSceneOp(op);
-    this.collab.sendYjsUpdate(frame.subarray(1));
+    const json = JSON.stringify(op);
+    const payload = this._encoder.encode(json);
+    console.log(LOG, '📤 SEND op:', op.o, 'payload:', json.length, 'bytes', 'wsState:', this.collab.state());
+    this.collab.sendYjsUpdate(payload);
   }
 
   // ── Inbound: Remote → Local ────────────────────────────────
 
   private onRemoteOperation(_type: number, data: Uint8Array): void {
     // type is 0x01 (sync) or 0x02 (update) — we use both for scene ops
+    console.log(LOG, '📥 RECV binary type:', _type, 'size:', data.length, 'bytes');
     const op = decodeSceneOp(data);
-    if (!op) return;
+    if (!op) {
+      console.error(LOG, '📥 RECV decode FAILED — raw:', new TextDecoder().decode(data.slice(0, 200)));
+      return;
+    }
 
+    console.log(LOG, '📥 RECV op:', op.o, JSON.stringify(op).slice(0, 200));
     this._applyingRemote = true;
     try {
       this.applyOp(op);
@@ -304,12 +437,14 @@ export class CollabProvider implements OnDestroy {
 
         const node = this.deserializeNodeShallow(op.n);
         sg.addNode(node, parent, op.i);
+        this.snapshotNode(node);
         break;
       }
 
       case 'delete': {
         const node = sg.getNode(op.id);
         if (!node) return; // already deleted
+        this._stateCache.delete(op.id);
         sg.removeNode(node);
         break;
       }
@@ -318,23 +453,41 @@ export class CollabProvider implements OnDestroy {
         const node = sg.getNode(op.id);
         if (!node) return;
 
-        // Apply properties from the modify payload
+        // Apply only the changed properties from the modify payload
         this.applyProperties(node, op.props);
         sg.notifyNodeChanged(node);
+
+        // Update state cache with the received values
+        const cached = this._stateCache.get(op.id);
+        if (cached) {
+          for (const [key, value] of Object.entries(op.props)) {
+            cached[key] = typeof value === 'object' && value !== null
+              ? JSON.parse(JSON.stringify(value))
+              : value;
+          }
+        }
         break;
       }
 
       case 'move': {
+        const movedNodes: BaseNode[] = [];
         for (const id of op.ids) {
           const node = sg.getNode(id);
           if (!node) continue;
           node.x += op.dx;
           node.y += op.dy;
           node.markTransformDirty();
+          movedNodes.push(node);
+
+          // Update position cache
+          const cached = this._stateCache.get(id);
+          if (cached) {
+            cached['x'] = node.x;
+            cached['y'] = node.y;
+          }
         }
-        const nodes = op.ids.map(id => sg.getNode(id)).filter(Boolean) as BaseNode[];
-        if (nodes.length > 0) {
-          sg.notifyNodesChanged(nodes);
+        if (movedNodes.length > 0) {
+          sg.notifyNodesChanged(movedNodes);
         }
         break;
       }
@@ -351,6 +504,17 @@ export class CollabProvider implements OnDestroy {
         node.markTransformDirty();
         node.markBoundsDirty();
         sg.notifyNodeChanged(node);
+
+        // Update cache
+        const cached = this._stateCache.get(op.id);
+        if (cached) {
+          cached['x'] = op.x;
+          cached['y'] = op.y;
+          cached['width'] = op.w;
+          cached['height'] = op.h;
+          cached['scaleX'] = op.sx;
+          cached['scaleY'] = op.sy;
+        }
         break;
       }
 
@@ -413,10 +577,10 @@ export class CollabProvider implements OnDestroy {
   }
 
   private onConnected(): void {
-    console.log(LOG, 'connected to room');
+    console.log(LOG, '🟢 connected to room — requesting sync, peers:', this.collab.peers());
     // Request current state from existing peers
-    const frame = encodeSceneOp({ o: 'sync-request' });
-    this.collab.sendYjsUpdate(frame.subarray(1));
+    const json = JSON.stringify({ o: 'sync-request' });
+    this.collab.sendYjsUpdate(this._encoder.encode(json));
   }
 
   private startAwareness(): void {
@@ -436,7 +600,8 @@ export class CollabProvider implements OnDestroy {
         cl: '#3b82f6',
       };
 
-      this.collab.sendAwareness(encodeAwareness(state).subarray(1));
+      const json = JSON.stringify(state);
+      this.collab.sendAwareness(this._encoder.encode(json));
     }, AWARENESS_INTERVAL_MS);
   }
 
@@ -462,16 +627,21 @@ export class CollabProvider implements OnDestroy {
 
     const pages = this.engine.sceneGraph.root.children;
     const models: SceneNodeModel[] = pages.map(page => this.serializeNodeDeep(page));
+    const totalNodes = models.reduce((acc, p) => acc + countDeep(p), 0);
 
-    const op: SceneOp = { o: 'full-sync', nodes: models };
-    const frame = encodeSceneOp(op);
-    this.collab.sendYjsUpdate(frame.subarray(1));
+    console.log(LOG, '📤 sending full-sync:', models.length, 'pages,', totalNodes, 'total nodes');
+    this.broadcastOp({ o: 'full-sync', nodes: models });
   }
 
   private applyFullSync(pageModels: SceneNodeModel[]): void {
     if (!this.engine) return;
 
     const sg = this.engine.sceneGraph;
+    const totalNodes = pageModels.reduce((acc, p) => acc + countDeep(p), 0);
+    console.log(LOG, '📥 applying full-sync:', pageModels.length, 'pages,', totalNodes, 'nodes');
+
+    // Clear state cache — will rebuild after adding nodes
+    this._stateCache.clear();
 
     this.engine.runWithoutAutoPageSelection(() => {
       this.engine!.selection.clearSelection();
@@ -485,6 +655,20 @@ export class CollabProvider implements OnDestroy {
       const firstPageId = sg.root.children[0]?.id;
       if (firstPageId) {
         this.engine!.setActivePage(firstPageId);
+      }
+    });
+
+    // Snapshot every node for future diffs
+    this.snapshotAllNodes();
+    console.log(LOG, '📥 full-sync applied, scene nodes:', sg.nodeCount, 'cache entries:', this._stateCache.size);
+  }
+
+  /** Snapshot all nodes in the scene graph for diff tracking. */
+  private snapshotAllNodes(): void {
+    if (!this.engine) return;
+    this.engine.sceneGraph.forEachNode(node => {
+      if (node !== this.engine!.sceneGraph.root) {
+        this.snapshotNode(node);
       }
     });
   }
@@ -734,15 +918,54 @@ export class CollabProvider implements OnDestroy {
   }
 
   private clearThrottles(): void {
-    if (this._moveThrottle) {
-      clearTimeout(this._moveThrottle);
-      this._moveThrottle = null;
+    if (this._moveTimer) {
+      clearTimeout(this._moveTimer);
+      this._moveTimer = null;
     }
-    this._pendingMove = null;
+    this._moveNodes = null;
 
-    for (const entry of this._modifyThrottles.values()) {
-      clearTimeout(entry.timer);
+    for (const timer of this._modifyTimers.values()) {
+      clearTimeout(timer);
     }
-    this._modifyThrottles.clear();
+    this._modifyTimers.clear();
+    this._modifyDirty.clear();
+  }
+
+  // ── State Cache Helpers ────────────────────────────────────
+
+  /**
+   * Extract a flat property map from a node — no children, no id/type.
+   * Uses `toJSON()` for correctness (includes type-specific props),
+   * but strips children to avoid recursive serialization overhead.
+   */
+  private getNodeProps(node: BaseNode): Record<string, unknown> {
+    const raw = node.toJSON();
+    const props: Record<string, unknown> = {};
+    for (const key of Object.keys(raw)) {
+      if (key === 'children' || key === 'id' || key === 'type') continue;
+      props[key] = raw[key];
+    }
+    return props;
+  }
+
+  /** Cache a deep clone of a node's properties for future diffs. */
+  private snapshotNode(node: BaseNode): void {
+    this._stateCache.set(node.id, this.deepClone(this.getNodeProps(node)));
+  }
+
+  /** Compare two property values for equality. */
+  private propsEqual(a: unknown, b: unknown): boolean {
+    if (a === b) return true;
+    if (a == null || b == null) return a === b;
+    if (typeof a !== typeof b) return false;
+    if (typeof a === 'object') {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return false;
+  }
+
+  /** Deep clone a plain JSON-compatible object. */
+  private deepClone<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
   }
 }

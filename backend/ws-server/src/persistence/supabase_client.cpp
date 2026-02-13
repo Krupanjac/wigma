@@ -174,17 +174,43 @@ bool SupabaseClient::clear_updates(std::string_view project_id) {
 }
 
 bool SupabaseClient::check_project_access(std::string_view project_id, std::string_view user_id) {
+  // 1. Check direct membership in project_users
   std::string path = "/rest/v1/project_users?project_id=eq." + std::string(project_id)
     + "&user_id=eq." + std::string(user_id)
     + "&select=role";
 
   auto resp = request("GET", path);
-  if (!resp.ok()) return false;
+  if (resp.ok()) {
+    try {
+      auto arr = json::parse(resp.body);
+      if (arr.is_array() && !arr.empty()) return true;
+    } catch (...) {}
+  }
+
+  // 2. Check if the project has link_sharing enabled
+  std::string link_path = "/rest/v1/projects?id=eq." + std::string(project_id)
+    + "&link_sharing=eq.true&select=id";
+
+  auto link_resp = request("GET", link_path);
+  if (!link_resp.ok()) return false;
 
   try {
-    auto arr = json::parse(resp.body);
-    return arr.is_array() && !arr.empty();
+    auto arr = json::parse(link_resp.body);
+    if (!arr.is_array() || arr.empty()) return false;
   } catch (...) {
     return false;
   }
+
+  // 3. Auto-add user as editor (link sharing is enabled)
+  json body;
+  body["project_id"] = project_id;
+  body["user_id"] = user_id;
+  body["role"] = "editor";
+  request("POST", "/rest/v1/project_users", body.dump(),
+    {{"Prefer", "resolution=merge-duplicates"}});
+
+  std::cout << "[wigma-ws] Auto-added user " << user_id
+            << " to project " << project_id << " via link sharing" << std::endl;
+
+  return true;
 }
