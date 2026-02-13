@@ -698,7 +698,7 @@ export class RenderManager {
       const nodeType = this.displayNodeTypes.get(id);
       const renderer = nodeType ? this.rendererRegistry.get(nodeType) : null;
       if (renderer) {
-        renderer.destroy(displayObj);
+        renderer.destroy(displayObj, id);
       } else {
         displayObj.destroy();
       }
@@ -725,7 +725,7 @@ export class RenderManager {
       const nodeType = this.displayNodeTypes.get(id);
       const renderer = nodeType ? this.rendererRegistry.get(nodeType) : null;
       if (renderer) {
-        renderer.destroy(obj);
+        renderer.destroy(obj, id);
       } else {
         obj.destroy();
       }

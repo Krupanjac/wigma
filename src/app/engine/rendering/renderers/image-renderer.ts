@@ -90,7 +90,10 @@ export class ImageRenderer extends BaseRenderer<Container> {
     }
   }
 
-  destroy(container: Container): void {
+  destroy(container: Container, nodeId?: string): void {
+    // Clear cached src tracking so undo re-triggers texture load
+    if (nodeId) this.loadedSrcMap.delete(nodeId);
+
     const placeholder = container.getChildByLabel('__placeholder__') as Graphics;
     if (placeholder) graphicsPool.release(placeholder);
     const sprite = container.getChildByLabel('__imageSprite__') as Sprite;

@@ -19,5 +19,5 @@ export abstract class BaseRenderer<T = unknown> {
   abstract sync(node: BaseNode, displayObject: T): void;
 
   /** Destroy/return the display object to the pool. */
-  abstract destroy(displayObject: T): void;
+  abstract destroy(displayObject: T, nodeId?: string): void;
 }

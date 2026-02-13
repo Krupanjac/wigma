@@ -98,7 +98,10 @@ export class VideoRenderer extends BaseRenderer<Container> {
     this.drawPlayButton(playBtn, w, h);
   }
 
-  destroy(container: Container): void {
+  destroy(container: Container, nodeId?: string): void {
+    // Clear cached poster tracking so undo re-triggers texture load
+    if (nodeId) this.loadedPosterMap.delete(nodeId);
+
     const bg = container.getChildByLabel('__videoBg__') as Graphics;
     if (bg) graphicsPool.release(bg);
     const playBtn = container.getChildByLabel('__playBtn__') as Graphics;
