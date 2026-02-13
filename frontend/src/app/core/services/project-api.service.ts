@@ -104,6 +104,41 @@ export class ProjectApiService {
 
   // ── Scene Graph Persistence ───────────────────────────────────────────
 
+  // ── Link Sharing ──────────────────────────────────────────────────────
+
+  /**
+   * Toggle link-based sharing on/off for a project (owner only).
+   * Calls the `set_link_sharing` RPC (SECURITY DEFINER).
+   */
+  async setLinkSharing(projectId: string, enabled: boolean): Promise<{ error: string | null }> {
+    const { error } = await this.withTimeout(
+      (this.supa.supabase.rpc as any)('set_link_sharing', {
+        p_project_id: projectId,
+        p_enabled: enabled,
+      }),
+      10000,
+    );
+
+    return { error: error?.message ?? null };
+  }
+
+  /**
+   * Auto-join a link-shared project as editor.
+   * Calls the `join_project_via_link` RPC (SECURITY DEFINER).
+   * Returns true if the user was added (or was already a member).
+   */
+  async joinViaLink(projectId: string): Promise<{ joined: boolean; error: string | null }> {
+    const { data, error } = await this.withTimeout(
+      (this.supa.supabase.rpc as any)('join_project_via_link', {
+        p_project_id: projectId,
+      }),
+      10000,
+    );
+
+    if (error) return { joined: false, error: error.message };
+    return { joined: !!data, error: null };
+  }
+
   // ── Project Sharing ───────────────────────────────────────────────────
 
   /** List all collaborators for a project. */

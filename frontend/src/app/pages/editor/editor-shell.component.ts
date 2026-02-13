@@ -81,7 +81,25 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   private async loadProject(id: string): Promise<void> {
     this.hideLoader = this.loader.show('Loading project…');
     try {
-      const { data, error } = await this.projectApi.getProject(id);
+      let { data, error } = await this.projectApi.getProject(id);
+
+      // If the project is link-shared but the user isn't a member yet,
+      // getProject succeeds (updated RLS allows it). Auto-join the user
+      // so they get full access to yjs, media, etc.
+      if (data?.link_sharing) {
+        await this.projectApi.joinViaLink(id);
+      }
+
+      // If getProject failed (e.g. RLS blocked before migration runs),
+      // try auto-joining first, then retry.
+      if (error && error.includes('Cannot coerce')) {
+        const { joined } = await this.projectApi.joinViaLink(id);
+        if (joined) {
+          const retry = await this.projectApi.getProject(id);
+          data = retry.data;
+          error = retry.error;
+        }
+      }
 
       if (error || !data) {
         this.errorMessage.set(error ?? 'Project not found');

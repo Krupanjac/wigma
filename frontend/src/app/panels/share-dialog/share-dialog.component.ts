@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ProjectApiService } from '../../core/services/project-api.service';
 import { ProjectService } from '../../core/services/project.service';
+import { AuthService } from '../../core/services/auth.service';
 import { CollabProvider } from '../../core/services/collab-provider.service';
 import type { DbProjectUser } from '@wigma/shared';
 
@@ -39,8 +40,29 @@ import type { DbProjectUser } from '@wigma/shared';
           </button>
         </div>
 
-        <!-- Copy link -->
+        <!-- Link sharing toggle -->
         <div class="border-b border-zinc-800 px-5 py-3">
+          @if (isOwner()) {
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <span class="text-xs font-medium text-zinc-300">Anyone with the link</span>
+                <p class="text-[11px] text-zinc-500 mt-0.5">
+                  {{ linkSharing() ? 'Anyone with the link can open and edit this project' : 'Only invited members can access this project' }}
+                </p>
+              </div>
+              <button
+                (click)="toggleLinkSharing()"
+                [disabled]="togglingLink()"
+                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50"
+                [class]="linkSharing() ? 'bg-blue-600' : 'bg-zinc-700'"
+              >
+                <span
+                  class="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform ring-0 transition duration-200 ease-in-out"
+                  [class]="linkSharing() ? 'translate-x-4' : 'translate-x-0'"
+                ></span>
+              </button>
+            </div>
+          }
           <div class="flex items-center gap-2">
             <input
               readonly
@@ -55,9 +77,6 @@ import type { DbProjectUser } from '@wigma/shared';
               {{ linkCopied() ? 'Copied!' : 'Copy link' }}
             </button>
           </div>
-          <p class="mt-1.5 text-[11px] text-zinc-500">
-            Anyone with this link who has been invited can collaborate in real time.
-          </p>
         </div>
 
         <!-- Invite by email -->
@@ -130,9 +149,13 @@ export class ShareDialogComponent implements OnInit {
   readonly collabProvider = inject(CollabProvider);
   private readonly projectApi = inject(ProjectApiService);
   private readonly projectService = inject(ProjectService);
+  private readonly auth = inject(AuthService);
 
   readonly shareLink = signal('');
   readonly linkCopied = signal(false);
+  readonly linkSharing = signal(false);
+  readonly togglingLink = signal(false);
+  readonly isOwner = signal(false);
   readonly inviting = signal(false);
   readonly inviteError = signal<string | null>(null);
   readonly inviteSuccess = signal<string | null>(null);
@@ -145,6 +168,8 @@ export class ShareDialogComponent implements OnInit {
     const project = this.projectService.remoteProject();
     if (project?.id) {
       this.shareLink.set(`${window.location.origin}/project/${project.id}`);
+      this.linkSharing.set(project.link_sharing ?? false);
+      this.isOwner.set(project.owner_id === this.auth.user()?.id);
     }
 
     // Snapshot peers for display
@@ -156,6 +181,26 @@ export class ShareDialogComponent implements OnInit {
       this.linkCopied.set(true);
       setTimeout(() => this.linkCopied.set(false), 2000);
     });
+  }
+
+  async toggleLinkSharing(): Promise<void> {
+    const project = this.projectService.remoteProject();
+    if (!project?.id) return;
+
+    const newValue = !this.linkSharing();
+    this.togglingLink.set(true);
+
+    const { error } = await this.projectApi.setLinkSharing(project.id, newValue);
+
+    this.togglingLink.set(false);
+
+    if (!error) {
+      this.linkSharing.set(newValue);
+      // Update the cached project so other components see the change
+      this.projectService.setRemoteProject({ ...project, link_sharing: newValue });
+    } else {
+      console.error('[ShareDialog] toggleLinkSharing failed:', error);
+    }
   }
 
   async invite(event: Event): Promise<void> {
