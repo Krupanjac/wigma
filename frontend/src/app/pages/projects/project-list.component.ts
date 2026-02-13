@@ -168,11 +168,14 @@ export class ProjectListComponent implements OnInit {
   }
 
   async createProject(): Promise<void> {
+    const name = prompt('Project name:', 'Untitled');
+    if (name === null) return; // user cancelled
+
     this.isCreating.set(true);
     this.errorMessage.set(null);
 
     try {
-      const { data, error } = await this.projectApi.createProject();
+      const { data, error } = await this.projectApi.createProject(name.trim() || 'Untitled');
 
       if (error) {
         this.errorMessage.set(error);

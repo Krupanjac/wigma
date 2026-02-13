@@ -178,6 +178,15 @@ export class ProjectService {
     this._document.set({ ...doc, name: nextName, updatedAt: new Date().toISOString() });
     void this.writeBrowserSnapshot();
     this._isDirty.set(true);
+
+    // Sync to Supabase if remote
+    const remote = this._remoteProject();
+    if (remote) {
+      this.projectApi.updateProject(remote.id, { name: nextName }).then(({ error }) => {
+        if (error) console.warn(LOG_PREFIX, 'rename — remote update failed:', error);
+        else plog('rename — synced to DB:', nextName);
+      });
+    }
   }
 
   setDescription(description: string): void {
@@ -185,6 +194,15 @@ export class ProjectService {
     this._document.set({ ...doc, description, updatedAt: new Date().toISOString() });
     void this.writeBrowserSnapshot();
     this._isDirty.set(true);
+
+    // Sync to Supabase if remote
+    const remote = this._remoteProject();
+    if (remote) {
+      this.projectApi.updateProject(remote.id, { description }).then(({ error }) => {
+        if (error) console.warn(LOG_PREFIX, 'setDescription — remote update failed:', error);
+        else plog('setDescription — synced to DB');
+      });
+    }
   }
 
   markSaved(): void {
@@ -307,6 +325,19 @@ export class ProjectService {
     if (error) {
       console.error(LOG_PREFIX, 'save — remote error:', error);
       return { error };
+    }
+
+    // Sync project metadata (name, description) to the projects table
+    const metaUpdate: Record<string, string> = {};
+    if (doc.name && doc.name !== remote.name) metaUpdate['name'] = doc.name;
+    if (doc.description !== undefined && doc.description !== remote.description) metaUpdate['description'] = doc.description;
+    if (Object.keys(metaUpdate).length > 0) {
+      const { error: metaError } = await this.projectApi.updateProject(remote.id, metaUpdate as any);
+      if (metaError) {
+        console.warn(LOG_PREFIX, 'save — metadata update failed:', metaError);
+      } else {
+        plog('save — metadata synced:', metaUpdate);
+      }
     }
 
     // Save thumbnail (non-blocking — don't fail the save if thumbnail fails)
