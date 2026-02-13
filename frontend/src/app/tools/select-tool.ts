@@ -408,10 +408,16 @@ export class SelectTool extends BaseTool {
     let scaleY = this.resizeState.startScaleY;
     const minScaleMagnitude = 1e-4;
 
+    // Use anchorLocal (the pinned point) as the reference for scale ratio.
+    // This prevents overshoot: since the anchor is fixed in world space,
+    // projecting the pointer through startWorldInv yields a consistent ratio
+    // regardless of cumulative scale changes.
+    const refPoint = this.resizeState.anchorLocal;
+
     if (hasX) {
-      const denomX = this.resizeState.handleLocal.x - this.resizeState.centerLocal.x;
+      const denomX = this.resizeState.handleLocal.x - refPoint.x;
       if (Math.abs(denomX) > 1e-6) {
-        const factorX = (localPos.x - this.resizeState.centerLocal.x) / denomX;
+        const factorX = (localPos.x - refPoint.x) / denomX;
         const rawScaleX = this.resizeState.startScaleX * factorX;
         const signX = Math.sign(rawScaleX) || 1;
         scaleX = signX * Math.max(minScaleMagnitude, Math.abs(rawScaleX));
@@ -419,9 +425,9 @@ export class SelectTool extends BaseTool {
     }
 
     if (hasY) {
-      const denomY = this.resizeState.handleLocal.y - this.resizeState.centerLocal.y;
+      const denomY = this.resizeState.handleLocal.y - refPoint.y;
       if (Math.abs(denomY) > 1e-6) {
-        const factorY = (localPos.y - this.resizeState.centerLocal.y) / denomY;
+        const factorY = (localPos.y - refPoint.y) / denomY;
         const rawScaleY = this.resizeState.startScaleY * factorY;
         const signY = Math.sign(rawScaleY) || 1;
         scaleY = signY * Math.max(minScaleMagnitude, Math.abs(rawScaleY));

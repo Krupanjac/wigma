@@ -602,16 +602,28 @@ export class RenderManager {
   private updateSizeBadgeOverlay(): void {
     this.sizeBadgeBg.clear();
 
-    if (this.selection.count !== 1) {
+    if (this.selection.count === 0) {
       this.sizeBadgeText.visible = false;
       this.sizeBadgeKey = '';
       return;
     }
 
-    const node = this.selection.selectedNodes[0];
-    const localBounds = node.localBounds;
-    const width = localBounds.width * Math.abs(node.scaleX);
-    const height = localBounds.height * Math.abs(node.scaleY);
+    let width: number;
+    let height: number;
+    let wb: { minX: number; maxX: number; minY: number; maxY: number };
+
+    if (this.selection.count === 1) {
+      const node = this.selection.selectedNodes[0];
+      const localBounds = node.localBounds;
+      width = localBounds.width * Math.abs(node.scaleX);
+      height = localBounds.height * Math.abs(node.scaleY);
+      wb = node.worldBounds;
+    } else {
+      const bounds = this.selection.bounds;
+      width = bounds.width;
+      height = bounds.height;
+      wb = bounds;
+    }
 
     if (width <= 0 || height <= 0) {
       this.sizeBadgeText.visible = false;
@@ -626,7 +638,6 @@ export class RenderManager {
     }
 
     const cam = this.viewport.camera;
-    const wb = node.worldBounds;
     const bottomCenter = cam.worldToScreen(new Vec2((wb.minX + wb.maxX) / 2, wb.maxY));
 
     const padX = 6;
