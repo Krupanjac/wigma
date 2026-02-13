@@ -6,7 +6,7 @@
 WsServer::WsServer(const Config& config)
   : config_(config)
   , room_manager_(config.max_rooms)
-  , jwt_verifier_(config.jwt_secret)
+  , jwt_verifier_(config.supabase_url, config.jwt_secret)
   , supabase_client_(config.supabase_url, config.supabase_service_key)
   , persistence_(supabase_client_) {}
 
@@ -62,6 +62,7 @@ void WsServer::stop() {
 }
 
 void WsServer::on_text_message(void* ws, PerSocketData* data, std::string_view message) {
+  try {
   auto msg = MessageCodec::decode_control(message);
   if (!msg.valid) return;
 
@@ -135,28 +136,42 @@ void WsServer::on_text_message(void* ws, PerSocketData* data, std::string_view m
               << " (" << room->peer_count() << " peers)" << std::endl;
     return;
   }
+
+  } catch (const std::exception& e) {
+    std::cerr << "[wigma-ws] EXCEPTION in on_text_message: " << e.what() << std::endl;
+    std::cerr.flush();
+  } catch (...) {
+    std::cerr << "[wigma-ws] UNKNOWN EXCEPTION in on_text_message" << std::endl;
+    std::cerr.flush();
+  }
 }
 
 void WsServer::on_binary_message(void* ws, PerSocketData* data,
                                   const uint8_t* payload, size_t len) {
   if (!data->authenticated) return;
 
-  auto decoded = MessageCodec::decode_binary(payload, len);
-  if (!decoded.valid) return;
+  try {
+    auto decoded = MessageCodec::decode_binary(payload, len);
+    if (!decoded.valid) return;
 
-  auto* room = room_manager_.get(data->project_id);
-  if (!room) return;
+    auto* room = room_manager_.get(data->project_id);
+    if (!room) return;
 
-  // Broadcast to all peers (zero-copy relay)
-  room->broadcast(ws, reinterpret_cast<const char*>(payload), len,
-    [](void* peer_ws, const char* d, size_t l, bool) {
-      auto* typed = static_cast<uWS::WebSocket<false, true, PerSocketData>*>(peer_ws);
-      typed->send(std::string_view(d, l), uWS::OpCode::BINARY);
-    });
+    // Broadcast to all peers (zero-copy relay)
+    room->broadcast(ws, reinterpret_cast<const char*>(payload), len,
+      [](void* peer_ws, const char* d, size_t l, bool) {
+        auto* typed = static_cast<uWS::WebSocket<false, true, PerSocketData>*>(peer_ws);
+        typed->send(std::string_view(d, l), uWS::OpCode::BINARY);
+      });
 
-  // Persist Yjs updates (not awareness)
-  if (decoded.type == MessageType::YjsUpdate) {
-    persistence_.persist_update(data->project_id, decoded.payload, decoded.payload_len);
+    // Persist Yjs updates (not awareness)
+    if (decoded.type == MessageType::YjsUpdate) {
+      persistence_.persist_update(data->project_id, decoded.payload, decoded.payload_len);
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "[wigma-ws] EXCEPTION in on_binary_message: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "[wigma-ws] UNKNOWN EXCEPTION in on_binary_message" << std::endl;
   }
 }
 

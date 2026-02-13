@@ -31,13 +31,6 @@ import { Vec2 } from '@shared/math/vec2';
 /* ── Logging ────────────────────────────────────────────────── */
 const LOG = '[Collab]';
 
-/** Count total nodes in a serialized model tree. */
-function countDeep(model: SceneNodeModel): number {
-  let count = 1;
-  for (const child of model.children ?? []) count += countDeep(child);
-  return count;
-}
-
 /* ── Throttle constants ──────────────────────────────────────── */
 const AWARENESS_INTERVAL_MS = 80;  // ~12 Hz cursor updates
 const MOVE_THROTTLE_MS      = 50;  // ~20 Hz for drag operations
@@ -143,7 +136,6 @@ export class CollabProvider implements OnDestroy {
     // Snapshot any existing nodes (scene may be loaded before collab connects)
     this.snapshotAllNodes();
 
-    console.log(LOG, '🔧 initialized with engine, scene listeners:', engine.sceneGraph.nodeCount, 'nodes, cache:', this._stateCache.size, 'entries');
   }
 
   /** Connect to a project room (call after scene graph is loaded). */
@@ -161,8 +153,6 @@ export class CollabProvider implements OnDestroy {
 
     // Connect to the WS room
     this.collab.connect(projectId);
-
-    console.log(LOG, '🔌 connecting to project', projectId, '— scene:', this.engine.sceneGraph.nodeCount, 'nodes, cache:', this._stateCache.size, 'entries');
   }
 
   /** Detach from the engine and disconnect. */
@@ -183,10 +173,9 @@ export class CollabProvider implements OnDestroy {
     this.stopAwareness();
     this.clearThrottles();
     this._stateCache.clear();
+    this.engine?.remoteLerper.clear();
     this.remotePeers.set(new Map());
     this.engine = null;
-
-    console.log(LOG, 'detached');
   }
 
   /** Update cursor world position (called by canvas interaction layer). */
@@ -201,9 +190,7 @@ export class CollabProvider implements OnDestroy {
   // ── Outbound: Local → Remote ───────────────────────────────
 
   private onLocalSceneEvent(event: SceneEvent): void {
-    const connected = this.isConnected();
-    console.log(LOG, '📤 scene event:', event.type, 'connected:', connected, 'applyingRemote:', this._applyingRemote);
-    if (!connected) return;
+    if (!this.isConnected()) return;
 
     switch (event.type) {
       case 'node-added':
@@ -214,11 +201,21 @@ export class CollabProvider implements OnDestroy {
         this.broadcastOp({ o: 'delete', id: event.node.id });
         break;
       case 'node-changed':
+        // Skip nodes being interpolated by the remote lerper
+        if (this.engine?.remoteLerper.isLerping(event.node.id)) return;
         this.broadcastNodeChanged(event.node);
         break;
-      case 'nodes-changed':
-        this.broadcastNodesChanged(event.nodes);
+      case 'nodes-changed': {
+        // Filter out nodes being interpolated by the remote lerper
+        const lerper = this.engine?.remoteLerper;
+        const localNodes = lerper
+          ? event.nodes.filter(n => !lerper.isLerping(n.id))
+          : event.nodes;
+        if (localNodes.length > 0) {
+          this.broadcastNodesChanged(localNodes);
+        }
         break;
+      }
       case 'node-reordered':
         this.broadcastNodeReordered(event.node);
         break;
@@ -255,16 +252,12 @@ export class CollabProvider implements OnDestroy {
     const cached = this._stateCache.get(ref.id);
 
     if (!cached || typeof cached['x'] !== 'number' || typeof cached['y'] !== 'number') {
-      // No cache — fall back to individual modifies (which handle no-cache correctly)
-      console.log(LOG, '📤 broadcastNodesChanged — no cache for ref node', ref.id, ', falling back to individual modifies');
       for (const n of nodes) this.broadcastNodeChanged(n);
       return;
     }
 
     const dx = ref.x - (cached['x'] as number);
     const dy = ref.y - (cached['y'] as number);
-
-    console.log(LOG, '📤 broadcastNodesChanged — nodes:', nodes.length, 'ref:', ref.id, 'dx:', dx.toFixed(2), 'dy:', dy.toFixed(2));
 
     // Skip negligible movement
     if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
@@ -394,22 +387,15 @@ export class CollabProvider implements OnDestroy {
   private broadcastOp(op: SceneOp): void {
     const json = JSON.stringify(op);
     const payload = this._encoder.encode(json);
-    console.log(LOG, '📤 SEND op:', op.o, 'payload:', json.length, 'bytes', 'wsState:', this.collab.state());
     this.collab.sendYjsUpdate(payload);
   }
 
   // ── Inbound: Remote → Local ────────────────────────────────
 
   private onRemoteOperation(_type: number, data: Uint8Array): void {
-    // type is 0x01 (sync) or 0x02 (update) — we use both for scene ops
-    console.log(LOG, '📥 RECV binary type:', _type, 'size:', data.length, 'bytes');
     const op = decodeSceneOp(data);
-    if (!op) {
-      console.error(LOG, '📥 RECV decode FAILED — raw:', new TextDecoder().decode(data.slice(0, 200)));
-      return;
-    }
+    if (!op) return;
 
-    console.log(LOG, '📥 RECV op:', op.o, JSON.stringify(op).slice(0, 200));
     this._applyingRemote = true;
     try {
       this.applyOp(op);
@@ -445,6 +431,7 @@ export class CollabProvider implements OnDestroy {
         const node = sg.getNode(op.id);
         if (!node) return; // already deleted
         this._stateCache.delete(op.id);
+        this.engine!.remoteLerper.removeTarget(op.id);
         sg.removeNode(node);
         break;
       }
@@ -453,9 +440,29 @@ export class CollabProvider implements OnDestroy {
         const node = sg.getNode(op.id);
         if (!node) return;
 
-        // Apply only the changed properties from the modify payload
-        this.applyProperties(node, op.props);
-        sg.notifyNodeChanged(node);
+        // Separate geometry props (lerped) from visual props (applied immediately)
+        const geomTarget: Record<string, number> = {};
+        const visualProps: Record<string, unknown> = {};
+        const GEOM_KEYS = new Set(['x', 'y', 'width', 'height', 'scaleX', 'scaleY', 'rotation']);
+
+        for (const [key, value] of Object.entries(op.props)) {
+          if (GEOM_KEYS.has(key) && typeof value === 'number') {
+            geomTarget[key] = value;
+          } else {
+            visualProps[key] = value;
+          }
+        }
+
+        // Lerp geometry changes for smoothness
+        if (Object.keys(geomTarget).length > 0) {
+          this.engine!.remoteLerper.setTarget(op.id, geomTarget as any);
+        }
+
+        // Apply non-geometry props immediately (fill, stroke, opacity, etc.)
+        if (Object.keys(visualProps).length > 0) {
+          this.applyProperties(node, visualProps);
+          sg.notifyNodeChanged(node);
+        }
 
         // Update state cache with the received values
         const cached = this._stateCache.get(op.id);
@@ -470,24 +477,16 @@ export class CollabProvider implements OnDestroy {
       }
 
       case 'move': {
-        const movedNodes: BaseNode[] = [];
-        for (const id of op.ids) {
-          const node = sg.getNode(id);
-          if (!node) continue;
-          node.x += op.dx;
-          node.y += op.dy;
-          node.markTransformDirty();
-          movedNodes.push(node);
+        // Use lerper for smooth interpolation instead of snapping
+        this.engine!.remoteLerper.addDelta(op.ids, op.dx, op.dy);
 
-          // Update position cache
+        // Update position cache to the final target
+        for (const id of op.ids) {
           const cached = this._stateCache.get(id);
-          if (cached) {
-            cached['x'] = node.x;
-            cached['y'] = node.y;
+          if (cached && typeof cached['x'] === 'number' && typeof cached['y'] === 'number') {
+            cached['x'] = (cached['x'] as number) + op.dx;
+            cached['y'] = (cached['y'] as number) + op.dy;
           }
-        }
-        if (movedNodes.length > 0) {
-          sg.notifyNodesChanged(movedNodes);
         }
         break;
       }
@@ -495,17 +494,15 @@ export class CollabProvider implements OnDestroy {
       case 'resize': {
         const node = sg.getNode(op.id);
         if (!node) return;
-        node.x = op.x;
-        node.y = op.y;
-        node.width = op.w;
-        node.height = op.h;
-        node.scaleX = op.sx;
-        node.scaleY = op.sy;
-        node.markTransformDirty();
-        node.markBoundsDirty();
-        sg.notifyNodeChanged(node);
 
-        // Update cache
+        // Use lerper for smooth interpolation
+        this.engine!.remoteLerper.setTarget(op.id, {
+          x: op.x, y: op.y,
+          width: op.w, height: op.h,
+          scaleX: op.sx, scaleY: op.sy,
+        });
+
+        // Update cache to the final target values
         const cached = this._stateCache.get(op.id);
         if (cached) {
           cached['x'] = op.x;
@@ -536,7 +533,6 @@ export class CollabProvider implements OnDestroy {
       }
 
       case 'full-sync': {
-        console.log(LOG, 'received full-sync with', op.nodes.length, 'page nodes');
         // Full state from peer — rebuild scene graph
         this.applyFullSync(op.nodes);
         break;
@@ -563,12 +559,11 @@ export class CollabProvider implements OnDestroy {
     });
   }
 
-  private onPeerJoined(userId: string): void {
-    console.log(LOG, 'peer joined:', userId);
+  private onPeerJoined(_userId: string): void {
+    // Peer presence is handled via awareness
   }
 
   private onPeerLeft(userId: string): void {
-    console.log(LOG, 'peer left:', userId);
     this.remotePeers.update(peers => {
       const next = new Map(peers);
       next.delete(userId);
@@ -577,7 +572,6 @@ export class CollabProvider implements OnDestroy {
   }
 
   private onConnected(): void {
-    console.log(LOG, '🟢 connected to room — requesting sync, peers:', this.collab.peers());
     // Request current state from existing peers
     const json = JSON.stringify({ o: 'sync-request' });
     this.collab.sendYjsUpdate(this._encoder.encode(json));
@@ -627,9 +621,7 @@ export class CollabProvider implements OnDestroy {
 
     const pages = this.engine.sceneGraph.root.children;
     const models: SceneNodeModel[] = pages.map(page => this.serializeNodeDeep(page));
-    const totalNodes = models.reduce((acc, p) => acc + countDeep(p), 0);
 
-    console.log(LOG, '📤 sending full-sync:', models.length, 'pages,', totalNodes, 'total nodes');
     this.broadcastOp({ o: 'full-sync', nodes: models });
   }
 
@@ -637,11 +629,9 @@ export class CollabProvider implements OnDestroy {
     if (!this.engine) return;
 
     const sg = this.engine.sceneGraph;
-    const totalNodes = pageModels.reduce((acc, p) => acc + countDeep(p), 0);
-    console.log(LOG, '📥 applying full-sync:', pageModels.length, 'pages,', totalNodes, 'nodes');
-
-    // Clear state cache — will rebuild after adding nodes
+    // Clear state cache and lerp targets — will rebuild after adding nodes
     this._stateCache.clear();
+    this.engine.remoteLerper.clear();
 
     this.engine.runWithoutAutoPageSelection(() => {
       this.engine!.selection.clearSelection();
@@ -660,7 +650,6 @@ export class CollabProvider implements OnDestroy {
 
     // Snapshot every node for future diffs
     this.snapshotAllNodes();
-    console.log(LOG, '📥 full-sync applied, scene nodes:', sg.nodeCount, 'cache entries:', this._stateCache.size);
   }
 
   /** Snapshot all nodes in the scene graph for diff tracking. */

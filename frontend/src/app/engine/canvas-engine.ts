@@ -10,6 +10,7 @@ import { GroupNode } from './scene-graph/group-node';
 import { AlignmentIndex } from './interaction/alignment-index';
 import { GuideState } from './interaction/guide-state';
 import { BaseNode } from './scene-graph/base-node';
+import { RemoteTransformLerper } from './rendering/remote-transform-lerper';
 
 /**
  * CanvasEngine — the main entry point for the pure OOP engine layer.
@@ -28,6 +29,9 @@ export class CanvasEngine {
   readonly interaction: InteractionManager;
   readonly hitTester: HitTester;
   readonly snapEngine: SnapEngine;
+
+  /** Smooth interpolation for remote geometry changes. */
+  readonly remoteLerper: RemoteTransformLerper;
 
   /** Active page (root child group) where newly created nodes go. */
   activePageId: string | null = null;
@@ -56,6 +60,7 @@ export class CanvasEngine {
       this.sceneGraph, this.spatialIndex, this.viewport, this.selection, this.guides,
       node => this.isNodeInActivePage(node)
     );
+    this.remoteLerper = new RemoteTransformLerper(this.sceneGraph, this.selection);
 
     // Add default Page 1
     const page1 = new GroupNode('Page 1');
@@ -265,6 +270,7 @@ export class CanvasEngine {
 
   private loop = (): void => {
     if (!this.running) return;
+    this.remoteLerper.tick();
     this.renderManager.frame();
     this.animationFrameId = requestAnimationFrame(this.loop);
   };

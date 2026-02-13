@@ -104,7 +104,6 @@ export class CollaborationService implements OnDestroy {
     const frame = new Uint8Array(1 + data.length);
     frame[0] = 0x02; // MessageType::YjsUpdate
     frame.set(data, 1);
-    console.log('[WS] 📤 sending', frame.length, 'bytes (type 0x02)');
     this.ws.send(frame);
   }
 
@@ -137,7 +136,6 @@ export class CollaborationService implements OnDestroy {
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
-        console.log('[WS] 🔌 WebSocket opened, sending join for project:', this.projectId);
         this.state.set('authenticating');
         // Send join message
         this.ws!.send(JSON.stringify({
@@ -160,8 +158,7 @@ export class CollaborationService implements OnDestroy {
         this.error.set('Connection error');
       };
 
-      this.ws.onclose = (ev) => {
-        console.log('[WS] 🔌 WebSocket closed, code:', ev.code, 'reason:', ev.reason);
+      this.ws.onclose = () => {
         this.state.set('disconnected');
         this.clearTimers();
         this.scheduleReconnect();
@@ -179,7 +176,6 @@ export class CollaborationService implements OnDestroy {
 
       switch (msg.type) {
         case 'joined':
-          console.log('[WS] ✅ Joined room, peers:', msg.peers);
           this.state.set('connected');
           this.peers.set(msg.peers);
           this.reconnectAttempt = 0;
@@ -216,11 +212,6 @@ export class CollaborationService implements OnDestroy {
 
     const type = data[0];
     const payload = data.subarray(1);
-
-    // Log non-awareness messages (awareness is too frequent)
-    if (type !== 0x03) {
-      console.log('[WS] 📥 received binary type:', '0x' + type.toString(16), 'payload:', payload.length, 'bytes');
-    }
 
     switch (type) {
       case 0x01: // YjsSync
