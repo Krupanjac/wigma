@@ -54,7 +54,7 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
       title: 'File',
       items: [
         { label: 'New Project', action: () => this.menuCommands.newProject() },
-        { label: 'Save to Browser', action: () => this.menuCommands.saveProjectToBrowser() },
+        { label: 'Save', action: () => this.menuCommands.saveProject() },
         { separator: true, label: '' },
         { label: 'Export PNG', action: () => this.menuCommands.exportPNG() },
         { label: 'Export JSON', action: () => this.menuCommands.exportJSON() },

@@ -127,7 +127,7 @@ export class PropertiesPanelComponent implements OnChanges, OnDestroy {
   }
 
   saveProject(): void {
-    this.menuCommands.saveProjectToBrowser();
+    void this.menuCommands.saveProject();
   }
 
   exportProjectJson(): void {

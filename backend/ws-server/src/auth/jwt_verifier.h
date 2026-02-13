@@ -2,6 +2,7 @@
 #include <string>
 #include <string_view>
 #include <optional>
+#include <cstdint>
 
 /**
  * JWT token verification for Supabase auth tokens.

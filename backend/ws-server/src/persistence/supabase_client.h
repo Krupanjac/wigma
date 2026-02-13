@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <optional>
+#include <cstdint>
 
 /**
  * Minimal Supabase REST client for server-side operations.

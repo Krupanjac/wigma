@@ -60,8 +60,16 @@ export interface DbProject {
   owner_id: string;
   canvas_config: CanvasConfig;
   thumbnail_path: string | null;
+  /** Full document scene graph (nodes, layers, geometry). null = empty project. */
+  project_data: DocumentData | null;
   created_at: string;
   updated_at: string;
+}
+
+/** The shape stored in the project_data JSONB column. */
+export interface DocumentData {
+  nodes: SceneNodeModel[];
+  canvas: CanvasConfig;
 }
 
 export interface DbProjectUser {
@@ -154,7 +162,7 @@ export type ProjectInsert = Pick<DbProject, 'name' | 'owner_id'> &
   Partial<Pick<DbProject, 'description' | 'version' | 'canvas_config' | 'thumbnail_path'>>;
 
 export type ProjectUpdate = Partial<
-  Pick<DbProject, 'name' | 'description' | 'canvas_config' | 'thumbnail_path'>
+  Pick<DbProject, 'name' | 'description' | 'canvas_config' | 'thumbnail_path' | 'project_data'>
 >;
 
 export type ProjectUserInsert = Pick<DbProjectUser, 'project_id' | 'user_id'> &

@@ -19,7 +19,9 @@ import { PathNode, AnchorType, PathAnchor } from '../../engine/scene-graph/path-
 import { Vec2 } from '../../shared/math/vec2';
 import { SceneEvent } from '../../engine/scene-graph/scene-graph-manager';
 import { IdbStorage } from '../../shared/utils/idb-storage';
-import type { DbProject } from '@wigma/shared';
+import { ExportRenderer } from '../../engine/rendering/export-renderer';
+import type { DbProject, DocumentData } from '@wigma/shared';
+import { ProjectApiService } from './project-api.service';
 
 /* ── Diagnostic logging helper ─────────────────────────────── */
 const LOG_PREFIX = '[Wigma Persist]';
@@ -47,6 +49,7 @@ export class ProjectService {
   private static readonly STORAGE_KEY = 'wigma.project.v1';
 
   private history = inject(HistoryService);
+  private projectApi = inject(ProjectApiService);
   private engine: CanvasEngine | null = null;
   private unsubscribeScene: (() => void) | null = null;
   private persistQueued = false;
@@ -259,6 +262,131 @@ export class ProjectService {
     plog('saveToBrowser — pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
     await this.writeBrowserSnapshot();
     this._isDirty.set(false);
+  }
+
+  /**
+   * Save the current scene graph to Supabase (remote project).
+   * Falls back to saveToBrowser() if not in remote mode.
+   */
+  async save(): Promise<{ error: string | null }> {
+    this.refreshDocumentFromEngine();
+    const doc = this._document();
+    const remote = this._remoteProject();
+
+    // Always persist locally too
+    this.sessionActivated = true;
+    await this.writeBrowserSnapshot();
+
+    if (!remote) {
+      plog('save — local mode, saved to browser only');
+      this._isDirty.set(false);
+      return { error: null };
+    }
+
+    const docData: DocumentData = {
+      nodes: doc.nodes,
+      canvas: doc.canvas,
+    };
+
+    plog('save — remote project', remote.id, 'pages:', doc.nodes.length, 'total nodes:', countNodesDeep(doc.nodes));
+
+    // Generate thumbnail in parallel with saving data
+    const thumbnailPromise = this.generateThumbnail();
+
+    const { error } = await this.projectApi.saveProjectData(remote.id, docData);
+
+    if (error) {
+      console.error(LOG_PREFIX, 'save — remote error:', error);
+      return { error };
+    }
+
+    // Save thumbnail (non-blocking — don't fail the save if thumbnail fails)
+    thumbnailPromise.then(async (thumbnail) => {
+      if (thumbnail) {
+        const { error: thumbError } = await this.projectApi.updateProject(remote.id, {
+          thumbnail_path: thumbnail,
+        });
+        if (thumbError) {
+          console.warn(LOG_PREFIX, 'save — thumbnail update failed:', thumbError);
+        } else {
+          plog('save — thumbnail saved');
+        }
+      }
+    });
+
+    this._isDirty.set(false);
+    plog('save — remote success');
+    return { error: null };
+  }
+
+  /**
+   * Generate a small thumbnail of the active page as a data URL.
+   * Returns null if there's no content to render.
+   */
+  private async generateThumbnail(): Promise<string | null> {
+    if (!this.engine) return null;
+
+    const page = this.engine.activePage;
+    if (!page || page.children.length === 0) return null;
+
+    try {
+      const exportRenderer = new ExportRenderer(
+        this.engine.sceneGraph,
+        this.engine.renderManager,
+      );
+
+      const thumbnail = await exportRenderer.renderPage(page, {
+        scale: 0.5,           // Low res for thumbnail
+        format: 'webp',
+        quality: 0.6,
+        padding: 20,
+        background: 0x1a1a1a,
+        includeBackground: true,
+      });
+
+      plog('generateThumbnail — size:', thumbnail.length);
+      return thumbnail;
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'generateThumbnail — failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Load scene graph from Supabase for the given remote project.
+   * Returns true if data was loaded, false if the project is empty.
+   */
+  async loadFromRemote(projectId: string): Promise<boolean> {
+    plog('loadFromRemote — fetching project_data for', projectId);
+
+    const { data, error } = await this.projectApi.loadProjectData(projectId);
+
+    if (error) {
+      console.error(LOG_PREFIX, 'loadFromRemote — error:', error);
+      return false;
+    }
+
+    if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0) {
+      plog('loadFromRemote — no saved scene data, starting fresh');
+      return false;
+    }
+
+    plog('loadFromRemote — loaded', data.nodes.length, 'pages, total nodes:', countNodesDeep(data.nodes));
+
+    const remote = this._remoteProject();
+    const doc: DocumentModel = {
+      id: remote?.id ?? uid(),
+      name: remote?.name ?? 'Untitled',
+      description: remote?.description ?? '',
+      version: remote?.version ?? '1.0.0',
+      createdAt: remote?.created_at ?? new Date().toISOString(),
+      updatedAt: remote?.updated_at ?? new Date().toISOString(),
+      canvas: data.canvas ?? { width: 1920, height: 1080, backgroundColor: 0x09090b },
+      nodes: data.nodes,
+    };
+
+    this.loadDocument(doc, false, true);
+    return true;
   }
 
   async restoreFromBrowser(): Promise<boolean> {

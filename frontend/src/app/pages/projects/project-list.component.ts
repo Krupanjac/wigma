@@ -152,27 +152,42 @@ export class ProjectListComponent implements OnInit {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
-    const { data, error } = await this.projectApi.listProjects();
-
-    this.projects.set(data);
-    this.errorMessage.set(error);
-    this.isLoading.set(false);
+    try {
+      const { data, error } = await this.projectApi.listProjects();
+      this.projects.set(data);
+      this.errorMessage.set(error);
+    } catch (err: any) {
+      console.error('[ProjectList] loadProjects failed:', err);
+      this.errorMessage.set(err?.message ?? 'Failed to load projects');
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
   async createProject(): Promise<void> {
     this.isCreating.set(true);
+    this.errorMessage.set(null);
 
-    const { data, error } = await this.projectApi.createProject();
+    try {
+      const { data, error } = await this.projectApi.createProject();
 
-    this.isCreating.set(false);
+      if (error) {
+        this.errorMessage.set(error);
+        return;
+      }
 
-    if (error) {
-      this.errorMessage.set(error);
-      return;
-    }
-
-    if (data) {
-      this.router.navigate(['/project', data.id]);
+      if (data) {
+        this.router.navigate(['/project', data.id]);
+      } else {
+        this.errorMessage.set('Project created but could not retrieve it. Check Supabase RLS policies.');
+        // Refresh the list so the project appears
+        await this.loadProjects();
+      }
+    } catch (err: any) {
+      console.error('[ProjectList] createProject failed:', err);
+      this.errorMessage.set(err?.message ?? 'Failed to create project');
+    } finally {
+      this.isCreating.set(false);
     }
   }
 
@@ -183,14 +198,19 @@ export class ProjectListComponent implements OnInit {
   async duplicateProject(project: DbProject, event: Event): Promise<void> {
     event.stopPropagation();
 
-    const { data, error } = await this.projectApi.duplicateProject(project.id);
-    if (error) {
-      this.errorMessage.set(error);
-      return;
-    }
+    try {
+      const { data, error } = await this.projectApi.duplicateProject(project.id);
+      if (error) {
+        this.errorMessage.set(error);
+        return;
+      }
 
-    if (data) {
-      this.projects.update(list => [data, ...list]);
+      if (data) {
+        this.projects.update(list => [data, ...list]);
+      }
+    } catch (err: any) {
+      console.error('[ProjectList] duplicateProject failed:', err);
+      this.errorMessage.set(err?.message ?? 'Failed to duplicate project');
     }
   }
 

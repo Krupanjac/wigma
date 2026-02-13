@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <functional>
+#include <cstdint>
 
 /**
  * Room manager — owns all active collaboration rooms.

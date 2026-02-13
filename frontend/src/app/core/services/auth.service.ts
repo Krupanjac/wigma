@@ -38,6 +38,7 @@ export class AuthService implements OnDestroy {
   readonly isAuthenticated = computed(() => this.user() !== null);
 
   private authSubscription: Subscription | null = null;
+  private initialSessionHandled = false;
 
   constructor(
     private readonly supabaseService: SupabaseService,
@@ -125,49 +126,84 @@ export class AuthService implements OnDestroy {
   private initAuthListener(): void {
     // Subscribe to auth state changes
     const { data } = this.supabaseService.supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
+      (event: AuthChangeEvent, session: Session | null) => {
+        console.debug('[Auth] onAuthStateChange:', event, session?.user?.email ?? 'no user');
+
         this.session.set(session);
         this.user.set(session?.user ?? null);
-
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user) {
-            await this.fetchProfile(session.user.id);
-          }
-        }
 
         if (event === 'SIGNED_OUT') {
           this.profile.set(null);
         }
 
+        // Unblock guards and UI IMMEDIATELY — don't wait for profile fetch
+        this.initialSessionHandled = true;
         this.isLoading.set(false);
+
+        // Fetch profile in background (non-blocking)
+        if (
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
+          session?.user
+        ) {
+          this.fetchProfile(session.user.id);
+        }
       }
     );
 
     this.authSubscription = data.subscription;
 
-    // Also check for an existing session on startup
-    this.restoreSession();
+    // Fallback: if onAuthStateChange doesn't fire within 2s, force-resolve.
+    // This handles the edge case where there's no stored session at all.
+    setTimeout(() => {
+      if (!this.initialSessionHandled) {
+        console.debug('[Auth] onAuthStateChange timeout — forcing isLoading=false');
+        this.initialSessionHandled = true;
+        this.isLoading.set(false);
+      }
+    }, 2000);
   }
 
   private async restoreSession(): Promise<void> {
-    const { data } = await this.supabaseService.supabase.auth.getSession();
-    if (data.session) {
-      this.session.set(data.session);
-      this.user.set(data.session.user);
-      await this.fetchProfile(data.session.user.id);
+    // No longer called — kept for potential manual use
+    try {
+      const { data, error } = await this.supabaseService.supabase.auth.getSession();
+      if (error) {
+        console.warn('[Auth] restoreSession error:', error.message);
+      } else if (data.session) {
+        this.session.set(data.session);
+        this.user.set(data.session.user);
+        this.fetchProfile(data.session.user.id);
+      }
+    } catch (e) {
+      console.error('[Auth] restoreSession exception:', e);
+    } finally {
+      this.isLoading.set(false);
     }
-    this.isLoading.set(false);
   }
 
   private async fetchProfile(userId: string): Promise<void> {
-    const { data, error } = await this.supabaseService.supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const result: { data: any; error: any } = await Promise.race([
+        this.supabaseService.supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('fetchProfile timed out after 8s')), 8000),
+        ),
+      ]);
 
-    if (!error && data) {
-      this.profile.set(data as unknown as DbProfile);
+      if (result.error) {
+        console.warn('[Auth] fetchProfile error:', result.error.message);
+        return;
+      }
+
+      if (result.data) {
+        this.profile.set(result.data as unknown as DbProfile);
+      }
+    } catch (e: any) {
+      console.error('[Auth] fetchProfile exception:', e?.message ?? e);
     }
   }
 }

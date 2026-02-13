@@ -99,6 +99,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       { combo: 'ctrl+z', action: () => this.menuCommands.undo() },
       { combo: 'ctrl+shift+z', action: () => this.menuCommands.redo() },
       { combo: 'ctrl+y', action: () => this.menuCommands.redo() },
+      { combo: 'ctrl+s', action: () => this.menuCommands.saveProject() },
       { combo: 'ctrl+c', action: () => this.menuCommands.copy() },
       { combo: 'ctrl+x', action: () => this.menuCommands.cut() },
       { combo: 'ctrl+v', action: () => this.menuCommands.paste() },

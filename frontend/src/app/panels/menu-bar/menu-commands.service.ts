@@ -112,6 +112,14 @@ export class MenuCommandsService {
     void this.project.saveToBrowser();
   }
 
+  /** Save project — to Supabase if remote, otherwise to browser. */
+  async saveProject(): Promise<void> {
+    const { error } = await this.project.save();
+    if (error) {
+      console.error('[MenuCommands] saveProject error:', error);
+    }
+  }
+
   importProjectJSON(json: string): void {
     this.project.fromJSON(json);
   }

@@ -77,16 +77,57 @@ export class EditorShellComponent implements OnInit, OnDestroy {
   }
 
   private async loadProject(id: string): Promise<void> {
-    const { data, error } = await this.projectApi.getProject(id);
+    try {
+      const { data, error } = await this.projectApi.getProject(id);
 
-    if (error || !data) {
-      this.errorMessage.set(error ?? 'Project not found');
+      if (error || !data) {
+        this.errorMessage.set(error ?? 'Project not found');
+        this.isLoading.set(false);
+        return;
+      }
+
+      // Set the remote project context so ProjectService knows where to save
+      this.projectService.setRemoteProject(data);
+
+      // Load the scene graph from Supabase (if it exists)
+      // This waits for the engine to be ready, then loads
+      await this.loadSceneWhenReady(id);
+
       this.isLoading.set(false);
-      return;
+    } catch (err: any) {
+      console.error('[EditorShell] loadProject error:', err);
+      this.errorMessage.set(err?.message ?? 'Failed to load project');
+      this.isLoading.set(false);
     }
+  }
 
-    // Set the remote project context so ProjectService knows where to save
-    this.projectService.setRemoteProject(data);
+  /**
+   * Wait for the engine to be initialized, then load scene data from Supabase.
+   * The engine is created by EditorComponent.ngAfterViewInit, which happens
+   * after isLoading becomes false. So we set isLoading=false first, then wait
+   * for the engine.
+   */
+  private async loadSceneWhenReady(projectId: string): Promise<void> {
+    // The actual scene loading happens after the editor component mounts.
+    // We use a microtask loop to wait for the engine to be ready.
     this.isLoading.set(false);
+
+    const maxAttempts = 50; // 5 seconds max
+    let attempts = 0;
+
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        // ProjectService.engine is set by ProjectService.init() which is called by EditorComponent
+        if ((this.projectService as any).engine || ++attempts >= maxAttempts) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 100);
+      };
+      check();
+    });
+
+    // Now load the remote data
+    await this.projectService.loadFromRemote(projectId);
   }
 }

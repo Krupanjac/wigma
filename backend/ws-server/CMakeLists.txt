@@ -40,6 +40,7 @@ target_include_directories(nlohmann_json INTERFACE deps/json/include)
 
 add_executable(wigma-ws-server
   src/main.cpp
+  src/config.cpp
   src/server/ws_server.cpp
   src/rooms/room.cpp
   src/rooms/room_manager.cpp
