@@ -2,6 +2,9 @@ import { ChangeDetectionStrategy, Component, HostListener, Input, NgZone, OnChan
 import { CanvasEngine } from '../../engine/canvas-engine';
 import { GroupNode } from '../../engine/scene-graph/group-node';
 import { MenuCommandsService } from '../menu-bar/menu-commands.service';
+import { HistoryService } from '../../core/services/history.service';
+import { ReorderNodeCommand } from '../../core/commands/reorder-node.command';
+import { ContextMenuService } from '../context-menu/context-menu.service';
 
 interface SidebarMenuItem {
   label: string;
@@ -39,6 +42,8 @@ interface LayerEntry {
 export class LayersPanelComponent implements OnChanges, OnDestroy {
   private ngZone = inject(NgZone);
   private menuCommands = inject(MenuCommandsService);
+  private history = inject(HistoryService);
+  private contextMenu = inject(ContextMenuService);
 
   @Input() engine: CanvasEngine | null = null;
 
@@ -49,6 +54,12 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
   readonly editingId = signal<string | null>(null);
   readonly editingName = signal('');
   readonly logoMenuOpen = signal(false);
+
+  // ── Drag-and-drop state ──
+  readonly isDragActive = signal(false);
+  readonly dragSourceId = signal<string | null>(null);
+  readonly dropTargetId = signal<string | null>(null);
+  readonly dropPosition = signal<'before' | 'after'>('before');
   readonly logoMenuSections: SidebarMenuSection[] = [
     {
       title: 'File',
@@ -92,6 +103,8 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
   ];
 
   private allEntriesById = new Map<string, LayerEntry>();
+  private knownIds = new Set<string>();
+  private dragStartY = 0;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeSelection: (() => void) | null = null;
   private removeRenameRequestListener: (() => void) | null = null;
@@ -211,18 +224,22 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
         }
 
         if (child.children.length > 0) {
-          if (!expanded.has(child.id)) {
+          // Only auto-expand nodes we haven't seen before
+          if (!this.knownIds.has(child.id)) {
             expanded.add(child.id);
           }
+          this.knownIds.add(child.id);
           collect(child.id, depth + 1, visibleParent && parentExpanded);
         }
       }
     };
 
     for (const page of pages) {
-      if (!expanded.has(page.id)) {
+      // Only auto-expand pages we haven't seen before
+      if (!this.knownIds.has(page.id)) {
         expanded.add(page.id);
       }
+      this.knownIds.add(page.id);
 
       const pageEntry: LayerEntry = {
         id: page.id,
@@ -402,5 +419,116 @@ export class LayersPanelComponent implements OnChanges, OnDestroy {
 
   hasChildren(id: string): boolean {
     return this.allEntriesById.get(id)?.hasChildren ?? false;
+  }
+
+  // ── Drag-and-drop reordering ──
+
+  onDragStart(entry: LayerEntry, event: MouseEvent): void {
+    if (event.button !== 0) return;
+    if (this.editingId()) return;
+
+    this.dragStartY = event.clientY;
+    const sourceId = entry.id;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const dy = Math.abs(e.clientY - this.dragStartY);
+      if (dy < 5 && !this.isDragActive()) return;
+
+      if (!this.isDragActive()) {
+        this.ngZone.run(() => {
+          this.isDragActive.set(true);
+          this.dragSourceId.set(sourceId);
+        });
+      }
+
+      // Find which layer row we're hovering
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const target = el?.closest('[data-layer-id]') as HTMLElement | null;
+      if (target) {
+        const targetId = target.getAttribute('data-layer-id')!;
+        if (targetId !== sourceId) {
+          const rect = target.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const pos: 'before' | 'after' = e.clientY < midY ? 'before' : 'after';
+          this.ngZone.run(() => {
+            this.dropTargetId.set(targetId);
+            this.dropPosition.set(pos);
+          });
+        } else {
+          this.ngZone.run(() => this.dropTargetId.set(null));
+        }
+      }
+    };
+
+    const onMouseUp = () => {
+      if (this.isDragActive() && this.dropTargetId()) {
+        this.ngZone.run(() => this.executeDrop());
+      }
+      this.ngZone.run(() => this.clearDragState());
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  private executeDrop(): void {
+    const sourceId = this.dragSourceId();
+    const targetId = this.dropTargetId();
+    const position = this.dropPosition();
+    if (!sourceId || !targetId || !this.engine) return;
+
+    const sourceNode = this.engine.sceneGraph.getNode(sourceId);
+    const targetNode = this.engine.sceneGraph.getNode(targetId);
+    if (!sourceNode || !targetNode || !sourceNode.parent || !targetNode.parent) return;
+
+    // Only allow same-parent reordering
+    if (sourceNode.parent !== targetNode.parent) return;
+
+    const parent = sourceNode.parent;
+    const oldIndex = parent.children.indexOf(sourceNode);
+    let newIndex = parent.children.indexOf(targetNode);
+
+    if (position === 'after') newIndex++;
+    if (oldIndex < newIndex) newIndex--;
+
+    if (oldIndex === newIndex) return;
+
+    const cmd = new ReorderNodeCommand(this.engine.sceneGraph, sourceId, oldIndex, newIndex);
+    this.history.execute(cmd);
+    this.refreshNodes();
+  }
+
+  private clearDragState(): void {
+    this.isDragActive.set(false);
+    this.dragSourceId.set(null);
+    this.dropTargetId.set(null);
+  }
+
+  isDragSource(id: string): boolean {
+    return this.isDragActive() && this.dragSourceId() === id;
+  }
+
+  showDropBefore(entryId: string): boolean {
+    return this.isDragActive() && this.dropTargetId() === entryId && this.dropPosition() === 'before';
+  }
+
+  showDropAfter(entryId: string): boolean {
+    return this.isDragActive() && this.dropTargetId() === entryId && this.dropPosition() === 'after';
+  }
+
+  // ── Layer right-click context menu ──
+
+  onLayerContextMenu(entry: LayerEntry, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.engine) return;
+
+    if (entry.kind === 'page') {
+      this.contextMenu.open(event.clientX, event.clientY, { type: 'page', pageId: entry.id });
+    } else {
+      this.contextMenu.open(event.clientX, event.clientY, { type: 'layer', nodeId: entry.id });
+    }
   }
 }

@@ -37,6 +37,8 @@ export class ContextMenuService {
         return this.buildPageItems(target.pageId);
       case 'node':
         return this.buildNodeItems(target.nodeId);
+      case 'layer':
+        return this.buildLayerItems(target.nodeId);
       case 'selection':
         return this.buildSelectionItems();
       case 'canvas':
@@ -161,6 +163,38 @@ export class ContextMenuService {
     if (!this.engine) return;
     if (this.engine.selection.isSelected(node.id)) return;
     this.engine.selection.select(node);
+  }
+
+  private buildLayerItems(nodeId: string): ContextMenuItem[] {
+    const node = this.engine?.sceneGraph.getNode(nodeId);
+    if (!node || node === this.engine?.sceneGraph.root) {
+      return this.buildCanvasItems();
+    }
+
+    this.ensureNodeSelected(node);
+
+    const isVisible = node.visible;
+    const isLocked = node.locked;
+    const selectionCount = this.engine?.selection.selectedNodeIds.length ?? 0;
+
+    return [
+      this.action('focus', 'Focus on Layer', () => this.focusOnNode(node)),
+      this.separator('s-focus'),
+      this.action('cut', 'Cut', () => this.menuCommands.cut(), 'Ctrl+X'),
+      this.action('copy', 'Copy', () => this.menuCommands.copy(), 'Ctrl+C'),
+      this.action('paste', 'Paste', () => this.menuCommands.paste(), 'Ctrl+V'),
+      this.separator('s-1'),
+      this.action('toggle-visible', isVisible ? 'Hide' : 'Show', () => this.toggleNodeVisible(node)),
+      this.action('toggle-lock', isLocked ? 'Unlock' : 'Lock', () => this.toggleNodeLocked(node)),
+      this.separator('s-2'),
+      this.action('group', 'Group Selection', () => this.menuCommands.group(), 'Ctrl+G', selectionCount < 2),
+      this.action('delete', 'Delete', () => this.menuCommands.deleteSelection(), 'Delete'),
+    ];
+  }
+
+  private focusOnNode(node: BaseNode): void {
+    if (!this.engine) return;
+    this.engine.viewport.fitToBounds(node.worldBounds, 100);
   }
 
   private requestRename(nodeId: string): void {

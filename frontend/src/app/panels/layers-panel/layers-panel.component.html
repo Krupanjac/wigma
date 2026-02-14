@@ -54,16 +54,25 @@
 
   <div class="flex-1 overflow-y-auto">
     @for (entry of nodes(); track entry.id) {
+      <!-- Drop indicator BEFORE this entry -->
+      @if (showDropBefore(entry.id)) {
+        <div class="mx-2 h-0.5 rounded bg-blue-500"></div>
+      }
+
       <div
         class="flex items-center gap-1 px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800/80"
         data-layer-entry="true"
         [attr.data-layer-id]="entry.id"
         [attr.data-layer-kind]="entry.kind"
         [class.cursor-pointer]="editingId() !== entry.id"
+        [class.cursor-grabbing]="isDragActive()"
         [class.bg-blue-900]="isSelected(entry.id)"
         [class.text-white]="isSelected(entry.id)"
         [class.text-zinc-300]="!isSelected(entry.id)"
+        [class.opacity-40]="isDragSource(entry.id)"
         [style.paddingLeft.px]="8 + (entry.depth * 14)"
+        (mousedown)="onDragStart(entry, $event)"
+        (contextmenu)="onLayerContextMenu(entry, $event)"
         (click)="onLayerClick(entry.id, $event)">
         <button
           type="button"
@@ -141,6 +150,11 @@
           </button>
         }
       </div>
+
+      <!-- Drop indicator AFTER this entry -->
+      @if (showDropAfter(entry.id)) {
+        <div class="mx-2 h-0.5 rounded bg-blue-500"></div>
+      }
     } @empty {
       <div class="p-4 text-center text-xs text-zinc-500">No pages</div>
     }

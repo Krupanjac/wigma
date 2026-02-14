@@ -7,6 +7,7 @@ export type ContextMenuTarget =
   | { type: 'canvas'; hitNodeId: string | null }
   | { type: 'page'; pageId: string }
   | { type: 'node'; nodeId: string }
+  | { type: 'layer'; nodeId: string }
   | { type: 'selection' };
 
 export interface ContextMenuActionItem {

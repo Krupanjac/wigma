@@ -82,6 +82,10 @@ export class RenderManager {
         case 'node-removed':
           this.onNodeRemoved(event.node.id);
           break;
+        case 'node-reordered':
+        case 'hierarchy-changed':
+          this.syncDisplayOrder();
+          break;
       }
     });
   }
@@ -682,6 +686,29 @@ export class RenderManager {
         this.onNodeAdded(node);
         syncedCount++;
       }
+    }
+  }
+
+  /**
+   * Re-sort display objects in the PixiJS worldContainer to match the
+   * scene graph's depth-first render order. Called on node-reordered and
+   * hierarchy-changed events so visual stacking stays in sync with the layer list.
+   */
+  private syncDisplayOrder(): void {
+    if (!this.worldContainer) return;
+
+    const renderOrder = this.sceneGraph.getRenderOrder();
+    let childIndex = 0;
+
+    for (const node of renderOrder) {
+      const displayObj = this.displayObjects.get(node.id);
+      if (!displayObj) continue;
+
+      // setChildIndex is O(1) when the element is already at the right position
+      if (this.worldContainer.children[childIndex] !== displayObj) {
+        this.worldContainer.setChildIndex(displayObj, childIndex);
+      }
+      childIndex++;
     }
   }
 
