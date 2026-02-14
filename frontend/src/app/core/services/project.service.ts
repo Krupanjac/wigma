@@ -23,10 +23,12 @@ import { ExportRenderer } from '../../engine/rendering/export-renderer';
 import { extractAssets, resolveAssets } from '../../shared/utils/asset-dedup';
 import type { DbProject, DocumentData } from '@wigma/shared';
 import { ProjectApiService } from './project-api.service';
+import { environment } from '../../../environments/environment';
 
 /* ── Diagnostic logging helper ─────────────────────────────── */
 const LOG_PREFIX = '[Wigma Persist]';
 function plog(...args: unknown[]): void {
+  if (!environment.debugLogging) return;
   console.warn(LOG_PREFIX, ...args);
 }
 function countNodesDeep(nodes: SceneNodeModel[]): number {
@@ -149,26 +151,30 @@ export class ProjectService {
     const rootChildren = this.engine?.sceneGraph.root.children ?? [];
     const activePageId = this.engine?.activePageId;
     console.group(`${LOG_PREFIX} Debug Dump`);
-    console.log('sessionActivated:', this.sessionActivated);
-    console.log('suspendPersistence:', this.suspendPersistence);
-    console.log('engine present:', !!this.engine);
-    console.log('document.nodes.length:', doc.nodes.length);
-    console.log('document total node count:', countNodesDeep(doc.nodes));
-    console.log('engine root.children.length:', rootChildren.length);
-    console.log('engine activePageId:', activePageId);
-    for (const page of rootChildren) {
-      console.log(`  page "${page.name}" id=${page.id} children=${page.children.length}`);
-      for (const child of page.children) {
-        console.log(`    └─ ${child.type} "${child.name}" id=${child.id} pos=(${child.x},${child.y}) size=${child.width}×${child.height}`);
+    if (environment.debugLogging) {
+      console.log('sessionActivated:', this.sessionActivated);
+      console.log('suspendPersistence:', this.suspendPersistence);
+      console.log('engine present:', !!this.engine);
+      console.log('document.nodes.length:', doc.nodes.length);
+      console.log('document total node count:', countNodesDeep(doc.nodes));
+      console.log('engine root.children.length:', rootChildren.length);
+      console.log('engine activePageId:', activePageId);
+      for (const page of rootChildren) {
+        console.log(`  page "${page.name}" id=${page.id} children=${page.children.length}`);
+        for (const child of page.children) {
+          console.log(`    └─ ${child.type} "${child.name}" id=${child.id} pos=(${child.x},${child.y}) size=${child.width}×${child.height}`);
+        }
       }
-    }
-    const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
-    if (raw) {
-      console.log('localStorage (legacy): present,', raw.length, 'bytes');
+      const raw = localStorage.getItem(ProjectService.STORAGE_KEY);
+      if (raw) {
+        console.log('localStorage (legacy): present,', raw.length, 'bytes');
+      } else {
+        console.log('localStorage (legacy): EMPTY');
+      }
+      console.log('Storage: IndexedDB (wigma-db/snapshots)');
     } else {
-      console.log('localStorage (legacy): EMPTY');
+      console.log('(set environment.debugLogging = true for full dump)');
     }
-    console.log('Storage: IndexedDB (wigma-db/snapshots)');
     console.groupEnd();
   }
 

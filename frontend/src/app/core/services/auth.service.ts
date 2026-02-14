@@ -2,6 +2,7 @@ import { Injectable, signal, computed, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import type { User, Session, AuthChangeEvent, Subscription } from '@supabase/supabase-js';
+import { environment } from '../../../environments/environment';
 
 /**
  * Authentication service — wraps Supabase Auth with Angular signals.
@@ -130,7 +131,9 @@ export class AuthService implements OnDestroy {
     // Subscribe to auth state changes
     const { data } = this.supabaseService.supabase.auth.onAuthStateChange(
       (event: AuthChangeEvent, session: Session | null) => {
-        console.debug('[Auth] onAuthStateChange:', event, session?.user?.email ?? 'no user');
+        if (environment.debugLogging) {
+          console.debug('[Auth] onAuthStateChange:', event, session?.user?.email ?? 'no user');
+        }
 
         this.session.set(session);
         this.user.set(session?.user ?? null);
@@ -147,7 +150,9 @@ export class AuthService implements OnDestroy {
     // This handles the edge case where there's no stored session at all.
     setTimeout(() => {
       if (!this.initialSessionHandled) {
-        console.debug('[Auth] onAuthStateChange timeout — forcing isLoading=false');
+        if (environment.debugLogging) {
+          console.debug('[Auth] onAuthStateChange timeout — forcing isLoading=false');
+        }
         this.initialSessionHandled = true;
         this.isLoading.set(false);
       }
