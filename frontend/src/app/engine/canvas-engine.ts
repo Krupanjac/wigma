@@ -60,7 +60,7 @@ export class CanvasEngine {
       this.sceneGraph, this.spatialIndex, this.viewport, this.selection, this.guides,
       node => this.isNodeInActivePage(node)
     );
-    this.remoteLerper = new RemoteTransformLerper(this.sceneGraph, this.selection);
+    this.remoteLerper = new RemoteTransformLerper(this.sceneGraph, this.selection, this.spatialIndex);
 
     // Add default Page 1
     const page1 = new GroupNode('Page 1');

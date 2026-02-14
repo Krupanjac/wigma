@@ -33,8 +33,8 @@ const LOG = '[Collab]';
 
 /* ── Throttle constants ──────────────────────────────────────── */
 const AWARENESS_INTERVAL_MS = 80;  // ~12 Hz cursor updates
-const MOVE_THROTTLE_MS      = 50;  // ~20 Hz for drag operations
-const MODIFY_THROTTLE_MS    = 50;  // ~20 Hz for property slider changes
+const MOVE_THROTTLE_MS      = 33;  // ~30 Hz for drag operations
+const MODIFY_THROTTLE_MS    = 33;  // ~30 Hz for property slider changes
 
 /**
  * CollabProvider — bridges CollaborationService (WebSocket transport)
