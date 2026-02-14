@@ -25,17 +25,16 @@ import { SpatialIndex } from '../spatial/spatial-index';
  */
 
 /** Minimum buffer delay (ms). Floor so we always have *some* smoothing. */
-const MIN_BUFFER_MS = 20;
+const MIN_BUFFER_MS = 16;
 
 /** Maximum buffer delay (ms). Cap for pathological network conditions. */
-const MAX_BUFFER_MS = 120;
+const MAX_BUFFER_MS = 80;
 
 /**
  * Multiplier on measured average inter-snapshot interval.
- * 1.2× means the buffer is 20% larger than the average gap — enough to
- * absorb normal jitter without adding unnecessary latency.
+ * 1.05× keeps the buffer just barely ahead of the average gap.
  */
-const BUFFER_MULTIPLIER = 1.2;
+const BUFFER_MULTIPLIER = 1.05;
 
 /** EMA alpha for inter-snapshot interval measurement. */
 const INTERVAL_ALPHA = 0.3;
@@ -47,7 +46,7 @@ const MAX_SNAPSHOTS = 20;
 const IDLE_TIMEOUT_MS = 200;
 
 /** When settling to final target (idle), close this fraction of the gap/frame. */
-const SETTLE_FACTOR = 0.7;
+const SETTLE_FACTOR = 0.85;
 
 /** Below this threshold (px / units) snap exactly. */
 const SNAP_THRESHOLD = 0.15;
