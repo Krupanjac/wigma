@@ -7,14 +7,15 @@ C++ WebSocket relay server for real-time collaboration, backed by **Supabase Clo
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Directory Structure](#directory-structure)
-3. [Prerequisites](#prerequisites)
-4. [Environment Setup](#environment-setup)
-5. [Building & Running](#building--running)
-6. [Database Schema](#database-schema)
-7. [WebSocket Protocol](#websocket-protocol)
-8. [C++ Server Internals](#c-server-internals)
-9. [Docker Deployment](#docker-deployment)
+2. [Recent Changes (2026-02-14)](#recent-changes-2026-02-14)
+3. [Directory Structure](#directory-structure)
+4. [Prerequisites](#prerequisites)
+5. [Environment Setup](#environment-setup)
+6. [Building & Running](#building--running)
+7. [Database Schema](#database-schema)
+8. [WebSocket Protocol](#websocket-protocol)
+9. [C++ Server Internals](#c-server-internals)
+10. [Docker Deployment](#docker-deployment)
 
 ---
 
@@ -48,6 +49,24 @@ C++ WebSocket relay server for real-time collaboration, backed by **Supabase Clo
 - **Supabase Cloud for everything stateful** — Auth (JWT + OAuth), PostgreSQL (project metadata, Yjs persistence), Storage (images, videos). No self-hosted DB to manage.
 - **Binary-first protocol** — Yjs updates and awareness data are sent as binary WebSocket frames with a 1-byte type prefix. Control messages (join, peer events) use JSON text frames.
 - **Zero-copy broadcast** — Binary payloads are forwarded to peers without deserialization. The server only reads the 1-byte type prefix to decide whether to persist the update.
+
+---
+
+## Recent Changes (2026-02-14)
+
+### Frontend math moved to WASM (interop note)
+
+The frontend shared math layer now uses a C/WebAssembly module (Emscripten) instead of pure TypeScript for vector/matrix/bounds/Bézier operations.
+
+### Backend impact
+
+- No changes to this backend service were required.
+- WebSocket protocol, binary frame types, persistence flow, and Supabase schema remain unchanged.
+- Existing Docker/native backend startup commands in this README are still valid.
+
+### Full-stack run note
+
+When running the full stack, the frontend now performs a WASM build step (`build:wasm`) before `start`/`build`.
 
 ---
 

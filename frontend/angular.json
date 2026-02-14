@@ -28,6 +28,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "math_wasm.wasm",
+                "input": "src/app/shared/math",
+                "output": "assets"
               }
             ],
             "styles": [

@@ -1,12 +1,9 @@
-/**
- * Axis-Aligned Bounding Box (AABB) — WASM-accelerated.
- *
- * Drop-in replacement for the original TypeScript Bounds.
- * All operations delegate to the C/WASM module.
- */
 import { Vec2 } from './vec2';
-import { getWasm } from './wasm-math';
 
+/**
+ * Axis-Aligned Bounding Box (AABB).
+ * All operations are O(1).
+ */
 export class Bounds {
   constructor(
     public readonly minX: number,
@@ -29,14 +26,15 @@ export class Bounds {
 
   static fromPoints(points: Vec2[]): Bounds {
     if (points.length === 0) return Bounds.EMPTY;
-    const w = getWasm();
-    const count = points.length;
-    for (let i = 0; i < count; i++) {
-      w.inputPointsBuf[i * 2] = points[i].x;
-      w.inputPointsBuf[i * 2 + 1] = points[i].y;
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
     }
-    w.bounds_from_points(w.inputPointsBuf.byteOffset, count);
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
+    return new Bounds(minX, minY, maxX, maxY);
   }
 
   get x(): number { return this.minX; }
@@ -52,70 +50,93 @@ export class Bounds {
     return this.minX > this.maxX || this.minY > this.maxY;
   }
 
+  /** Test if this AABB intersects another AABB. */
   intersects(other: Bounds): boolean {
-    return getWasm().bounds_intersects(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY
-    ) === 1;
+    return (
+      this.minX <= other.maxX &&
+      this.maxX >= other.minX &&
+      this.minY <= other.maxY &&
+      this.maxY >= other.minY
+    );
   }
 
+  /** Test if a point is inside this AABB. */
   contains(point: Vec2): boolean {
-    return getWasm().bounds_contains_point(
-      this.minX, this.minY, this.maxX, this.maxY,
-      point.x, point.y
-    ) === 1;
+    return (
+      point.x >= this.minX &&
+      point.x <= this.maxX &&
+      point.y >= this.minY &&
+      point.y <= this.maxY
+    );
   }
 
+  /** Test if another AABB is fully contained within this AABB. */
   containsBounds(other: Bounds): boolean {
-    return getWasm().bounds_contains_bounds(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY
-    ) === 1;
+    return (
+      other.minX >= this.minX &&
+      other.maxX <= this.maxX &&
+      other.minY >= this.minY &&
+      other.maxY <= this.maxY
+    );
   }
 
+  /** Return the smallest AABB enclosing both this and other. */
   union(other: Bounds): Bounds {
-    const w = getWasm();
-    w.bounds_union(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY
+    return new Bounds(
+      Math.min(this.minX, other.minX),
+      Math.min(this.minY, other.minY),
+      Math.max(this.maxX, other.maxX),
+      Math.max(this.maxY, other.maxY)
     );
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
   }
 
+  /** Return the intersection AABB, or EMPTY if no overlap. */
   intersection(other: Bounds): Bounds {
-    const w = getWasm();
-    const ok = w.bounds_intersection(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY
-    );
-    if (!ok) return Bounds.EMPTY;
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
+    const minX = Math.max(this.minX, other.minX);
+    const minY = Math.max(this.minY, other.minY);
+    const maxX = Math.min(this.maxX, other.maxX);
+    const maxY = Math.min(this.maxY, other.maxY);
+    if (minX > maxX || minY > maxY) return Bounds.EMPTY;
+    return new Bounds(minX, minY, maxX, maxY);
   }
 
+  /** Expand by a uniform margin on all sides. */
   expand(margin: number): Bounds {
-    const w = getWasm();
-    w.bounds_expand(this.minX, this.minY, this.maxX, this.maxY, margin);
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
+    return new Bounds(
+      this.minX - margin,
+      this.minY - margin,
+      this.maxX + margin,
+      this.maxY + margin
+    );
   }
 
+  /** Expand by different margins per axis. */
   expandXY(mx: number, my: number): Bounds {
-    const w = getWasm();
-    w.bounds_expand_xy(this.minX, this.minY, this.maxX, this.maxY, mx, my);
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
+    return new Bounds(
+      this.minX - mx,
+      this.minY - my,
+      this.maxX + mx,
+      this.maxY + my
+    );
   }
 
+  /** Translate bounds by an offset. */
   translate(dx: number, dy: number): Bounds {
-    const w = getWasm();
-    w.bounds_translate(this.minX, this.minY, this.maxX, this.maxY, dx, dy);
-    return new Bounds(w.resultBuf[0], w.resultBuf[1], w.resultBuf[2], w.resultBuf[3]);
+    return new Bounds(
+      this.minX + dx,
+      this.minY + dy,
+      this.maxX + dx,
+      this.maxY + dy
+    );
   }
 
   equals(other: Bounds, epsilon: number = 1e-10): boolean {
-    return getWasm().bounds_equals(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY,
-      epsilon
-    ) === 1;
+    return (
+      Math.abs(this.minX - other.minX) < epsilon &&
+      Math.abs(this.minY - other.minY) < epsilon &&
+      Math.abs(this.maxX - other.maxX) < epsilon &&
+      Math.abs(this.maxY - other.maxY) < epsilon
+    );
   }
 
   clone(): Bounds {
@@ -128,7 +149,7 @@ export class Bounds {
 }
 
 /**
- * Mutable AABB for hot-path operations — WASM-accelerated.
+ * Mutable AABB for hot-path operations.
  */
 export class MutableBounds {
   constructor(
@@ -171,15 +192,10 @@ export class MutableBounds {
   }
 
   unionMut(other: Bounds | MutableBounds): this {
-    const w = getWasm();
-    w.bounds_union(
-      this.minX, this.minY, this.maxX, this.maxY,
-      other.minX, other.minY, other.maxX, other.maxY
-    );
-    this.minX = w.resultBuf[0];
-    this.minY = w.resultBuf[1];
-    this.maxX = w.resultBuf[2];
-    this.maxY = w.resultBuf[3];
+    this.minX = Math.min(this.minX, other.minX);
+    this.minY = Math.min(this.minY, other.minY);
+    this.maxX = Math.max(this.maxX, other.maxX);
+    this.maxY = Math.max(this.maxY, other.maxY);
     return this;
   }
 

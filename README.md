@@ -7,19 +7,20 @@ A **Figma-class collaborative vector design tool** built as a monorepo with an *
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Monorepo Structure](#monorepo-structure)
-3. [Architecture Overview](#architecture-overview)
-4. [Frontend](#frontend)
-5. [Backend](#backend)
-6. [Shared Types](#shared-types)
-7. [Getting Started](#getting-started)
-8. [Database Schema](#database-schema)
-9. [Authentication & Authorization](#authentication--authorization)
-10. [Real-Time Collaboration](#real-time-collaboration)
-11. [Persistence Pipeline](#persistence-pipeline)
-12. [Performance Strategies](#performance-strategies)
-13. [Keyboard Shortcuts](#keyboard-shortcuts)
-14. [Tech Stack](#tech-stack)
+2. [Recent Changes (2026-02-14)](#recent-changes-2026-02-14)
+3. [Monorepo Structure](#monorepo-structure)
+4. [Architecture Overview](#architecture-overview)
+5. [Frontend](#frontend)
+6. [Backend](#backend)
+7. [Shared Types](#shared-types)
+8. [Getting Started](#getting-started)
+9. [Database Schema](#database-schema)
+10. [Authentication & Authorization](#authentication--authorization)
+11. [Real-Time Collaboration](#real-time-collaboration)
+12. [Persistence Pipeline](#persistence-pipeline)
+13. [Performance Strategies](#performance-strategies)
+14. [Keyboard Shortcuts](#keyboard-shortcuts)
+15. [Tech Stack](#tech-stack)
 
 ---
 
@@ -45,6 +46,24 @@ Wigma is a full-stack design application that mirrors the Figma workflow: GPU-re
 - User authentication with auto-profile creation
 - Thumbnail generation with WebGL texture-size clamping
 - PNG and JSON export
+
+---
+
+## Recent Changes (2026-02-14)
+
+### Frontend math migrated to WASM
+
+The shared math layer (`Vec2`, `Matrix2D`, `Bounds`, cubic Bézier utilities) now runs through a C/WebAssembly module compiled with Emscripten.
+
+- Added C implementation and build pipeline in `frontend/src/app/shared/math/wasm/`.
+- Added WASM loader (`wasm-math.ts`) and replaced the TypeScript math classes/functions with API-compatible WASM-backed wrappers.
+- Added generated module artifacts in `frontend/src/app/shared/math/math_wasm.mjs` and `frontend/src/app/shared/math/math_wasm.wasm`.
+- App bootstrap now initializes WASM first (`initWasmMath()` in `frontend/src/main.ts`).
+- Angular build now copies the `.wasm` file to assets and frontend scripts run WASM build automatically via `build:wasm` (`prestart` and `prebuild`).
+
+### Backend impact
+
+No backend protocol, persistence, or schema changes were required for this update.
 
 ---
 

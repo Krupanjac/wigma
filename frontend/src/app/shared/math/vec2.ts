@@ -1,8 +1,11 @@
 /**
- * Immutable 2D Vector class.
- * All operations return new Vec2 instances by default.
- * Use *Mut() variants for hot-path mutable operations.
+ * Immutable 2D Vector class — WASM-accelerated.
+ *
+ * Drop-in replacement for the original TypeScript Vec2.
+ * All heavy math operations delegate to the C/WASM module.
  */
+import { getWasm } from './wasm-math';
+
 export class Vec2 {
   constructor(
     public readonly x: number = 0,
@@ -24,136 +27,138 @@ export class Vec2 {
     return new Vec2(arr[0], arr[1]);
   }
 
-  // ── Immutable operations ───────────────────────────────────
+  // ── Immutable operations (WASM-backed) ─────────────────────
 
   add(other: Vec2): Vec2 {
-    return new Vec2(this.x + other.x, this.y + other.y);
+    const w = getWasm();
+    w.vec2_add(this.x, this.y, other.x, other.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   sub(other: Vec2): Vec2 {
-    return new Vec2(this.x - other.x, this.y - other.y);
+    const w = getWasm();
+    w.vec2_sub(this.x, this.y, other.x, other.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   scale(scalar: number): Vec2 {
-    return new Vec2(this.x * scalar, this.y * scalar);
+    const w = getWasm();
+    w.vec2_scale(this.x, this.y, scalar);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   scaleXY(sx: number, sy: number): Vec2 {
-    return new Vec2(this.x * sx, this.y * sy);
+    const w = getWasm();
+    w.vec2_scale_xy(this.x, this.y, sx, sy);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   negate(): Vec2 {
-    return new Vec2(-this.x, -this.y);
+    const w = getWasm();
+    w.vec2_negate(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   dot(other: Vec2): number {
-    return this.x * other.x + this.y * other.y;
+    return getWasm().vec2_dot(this.x, this.y, other.x, other.y);
   }
 
-  /** 2D cross product (returns scalar z-component). */
   cross(other: Vec2): number {
-    return this.x * other.y - this.y * other.x;
+    return getWasm().vec2_cross(this.x, this.y, other.x, other.y);
   }
 
   length(): number {
-    return Math.sqrt(this.x * this.x + this.y * this.y);
+    return getWasm().vec2_length(this.x, this.y);
   }
 
   lengthSquared(): number {
-    return this.x * this.x + this.y * this.y;
+    return getWasm().vec2_length_squared(this.x, this.y);
   }
 
   normalize(): Vec2 {
-    const len = this.length();
-    if (len < 1e-10) return Vec2.ZERO;
-    return new Vec2(this.x / len, this.y / len);
+    const w = getWasm();
+    w.vec2_normalize(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   distanceTo(other: Vec2): number {
-    const dx = this.x - other.x;
-    const dy = this.y - other.y;
-    return Math.sqrt(dx * dx + dy * dy);
+    return getWasm().vec2_distance(this.x, this.y, other.x, other.y);
   }
 
   distanceToSquared(other: Vec2): number {
-    const dx = this.x - other.x;
-    const dy = this.y - other.y;
-    return dx * dx + dy * dy;
+    return getWasm().vec2_distance_squared(this.x, this.y, other.x, other.y);
   }
 
   lerp(other: Vec2, t: number): Vec2 {
-    return new Vec2(
-      this.x + (other.x - this.x) * t,
-      this.y + (other.y - this.y) * t
-    );
+    const w = getWasm();
+    w.vec2_lerp(this.x, this.y, other.x, other.y, t);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
-  /** Angle in radians from positive x-axis. */
   angle(): number {
-    return Math.atan2(this.y, this.x);
+    return getWasm().vec2_angle(this.x, this.y);
   }
 
-  /** Angle in radians from this vector to another. */
   angleTo(other: Vec2): number {
-    return Math.atan2(other.y - this.y, other.x - this.x);
+    return getWasm().vec2_angle_to(this.x, this.y, other.x, other.y);
   }
 
-  /** Rotate around origin by angle in radians. */
   rotate(angle: number): Vec2 {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return new Vec2(
-      this.x * cos - this.y * sin,
-      this.x * sin + this.y * cos
-    );
+    const w = getWasm();
+    w.vec2_rotate(this.x, this.y, angle);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
-  /** Rotate around a pivot point by angle in radians. */
   rotateAround(pivot: Vec2, angle: number): Vec2 {
-    const dx = this.x - pivot.x;
-    const dy = this.y - pivot.y;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return new Vec2(
-      pivot.x + dx * cos - dy * sin,
-      pivot.y + dx * sin + dy * cos
-    );
+    const w = getWasm();
+    w.vec2_rotate_around(this.x, this.y, pivot.x, pivot.y, angle);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   perpendicular(): Vec2 {
-    return new Vec2(-this.y, this.x);
+    const w = getWasm();
+    w.vec2_perpendicular(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   reflect(normal: Vec2): Vec2 {
-    const d = 2 * this.dot(normal);
-    return new Vec2(this.x - d * normal.x, this.y - d * normal.y);
+    const w = getWasm();
+    w.vec2_reflect(this.x, this.y, normal.x, normal.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   clamp(min: Vec2, max: Vec2): Vec2 {
-    return new Vec2(
-      Math.max(min.x, Math.min(max.x, this.x)),
-      Math.max(min.y, Math.min(max.y, this.y))
-    );
+    const w = getWasm();
+    w.vec2_clamp(this.x, this.y, min.x, min.y, max.x, max.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   abs(): Vec2 {
-    return new Vec2(Math.abs(this.x), Math.abs(this.y));
+    const w = getWasm();
+    w.vec2_abs(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   floor(): Vec2 {
-    return new Vec2(Math.floor(this.x), Math.floor(this.y));
+    const w = getWasm();
+    w.vec2_floor(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   ceil(): Vec2 {
-    return new Vec2(Math.ceil(this.x), Math.ceil(this.y));
+    const w = getWasm();
+    w.vec2_ceil(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   round(): Vec2 {
-    return new Vec2(Math.round(this.x), Math.round(this.y));
+    const w = getWasm();
+    w.vec2_round(this.x, this.y);
+    return new Vec2(w.resultBuf[0], w.resultBuf[1]);
   }
 
   equals(other: Vec2, epsilon: number = 1e-10): boolean {
-    return Math.abs(this.x - other.x) < epsilon && Math.abs(this.y - other.y) < epsilon;
+    return getWasm().vec2_equals(this.x, this.y, other.x, other.y, epsilon) === 1;
   }
 
   toArray(): [number, number] {
@@ -170,15 +175,13 @@ export class Vec2 {
 
   // ── Mutable operations (for hot paths) ─────────────────────
 
-  /** Mutable vector for performance-critical loops. */
   static mutable(x: number = 0, y: number = 0): MutableVec2 {
     return new MutableVec2(x, y);
   }
 }
 
 /**
- * Mutable variant of Vec2 for hot-path operations.
- * Avoids GC pressure in tight loops (rendering, spatial queries).
+ * Mutable variant of Vec2 for hot-path operations — WASM-accelerated.
  */
 export class MutableVec2 {
   constructor(
@@ -199,32 +202,34 @@ export class MutableVec2 {
   }
 
   addMut(other: Vec2 | MutableVec2): this {
-    this.x += other.x;
-    this.y += other.y;
+    const w = getWasm();
+    w.vec2_add(this.x, this.y, other.x, other.y);
+    this.x = w.resultBuf[0];
+    this.y = w.resultBuf[1];
     return this;
   }
 
   subMut(other: Vec2 | MutableVec2): this {
-    this.x -= other.x;
-    this.y -= other.y;
+    const w = getWasm();
+    w.vec2_sub(this.x, this.y, other.x, other.y);
+    this.x = w.resultBuf[0];
+    this.y = w.resultBuf[1];
     return this;
   }
 
   scaleMut(scalar: number): this {
-    this.x *= scalar;
-    this.y *= scalar;
+    const w = getWasm();
+    w.vec2_scale(this.x, this.y, scalar);
+    this.x = w.resultBuf[0];
+    this.y = w.resultBuf[1];
     return this;
   }
 
   normalizeMut(): this {
-    const len = Math.sqrt(this.x * this.x + this.y * this.y);
-    if (len < 1e-10) {
-      this.x = 0;
-      this.y = 0;
-    } else {
-      this.x /= len;
-      this.y /= len;
-    }
+    const w = getWasm();
+    w.vec2_normalize_mut(this.x, this.y);
+    this.x = w.resultBuf[0];
+    this.y = w.resultBuf[1];
     return this;
   }
 
