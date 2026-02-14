@@ -68,7 +68,7 @@ backend/
         ├── main.cpp          ← Entry point, signal handlers
         ├── config.h / .cpp   ← Config from environment variables
         ├── auth/
-        │   ├── jwt_verifier.h / .cpp   ← HS256 JWT verification (OpenSSL)
+        │   ├── jwt_verifier.h / .cpp   ← ES256/HS256 JWT verification (OpenSSL + JWKS)
         ├── persistence/
         │   ├── supabase_client.h / .cpp ← REST client for Supabase DB
         │   └── yjs_persistence.h / .cpp ← Snapshot + incremental update storage
@@ -273,7 +273,7 @@ Client                          Server
 | `WsServer`         | uWebSockets event loop, message dispatch, lifecycle           |
 | `RoomManager`      | O(1) room lookup by project ID, lazy create/destroy           |
 | `Room`             | Peer set, zero-copy broadcast, user ID mapping                |
-| `JwtVerifier`      | HS256 verification via OpenSSL HMAC, expiry checking          |
+| `JwtVerifier`      | ES256 (JWKS) + HS256 fallback JWT verification via OpenSSL    |
 | `MessageCodec`     | Binary encode/decode (1-byte prefix), JSON control messages   |
 | `SupabaseClient`   | REST API calls to Supabase (service-role key, bypasses RLS)   |
 | `YjsPersistence`   | Load snapshots + updates, append updates, compact             |
@@ -285,7 +285,7 @@ Client                          Server
 |----------------------------|---------|----------------------------------|
 | [uWebSockets](https://github.com/uNetworking/uWebSockets) | latest | High-perf WebSocket server       |
 | [nlohmann/json](https://github.com/nlohmann/json)          | 3.11.3 | JSON parsing for control messages |
-| OpenSSL (system)           | ≥ 3.0   | HMAC-SHA256 for JWT              |
+| OpenSSL (system)           | ≥ 3.0   | JWT verification (ES256 + HS256) |
 | zlib (system)              |         | WebSocket per-message deflate    |
 
 ---
@@ -317,6 +317,40 @@ docker compose down
 - **Runtime stage:** Ubuntu 24.04 + libssl3 + zlib1g (~80 MB)
 - **Binary:** Statically-linked server at `/usr/local/bin/wigma-ws-server`
 - **Port:** 9001 (configurable via `WS_PORT`)
+
+---
+
+## JWT Verification
+
+The `JwtVerifier` supports two signature algorithms to handle Supabase's key rotation:
+
+| Algorithm | Key Source | Usage |
+|-----------|-----------|-------|
+| **ES256** (primary) | JWKS endpoint (`/auth/v1/.well-known/jwks.json`) | Supabase's current default — ECC P-256 public key fetched on server startup |
+| **HS256** (fallback) | `JWT_SECRET` environment variable | Legacy Supabase projects or custom JWTs |
+
+**Startup flow:**
+1. Server fetches the JWKS endpoint from Supabase
+2. Extracts the ES256 (P-256) public key from the first RSA/EC key in the set
+3. Caches the key in memory for the lifetime of the process
+4. On each WebSocket `join`, the JWT is verified against ES256 first; if that fails, HS256 is attempted as fallback
+
+This ensures compatibility regardless of whether Supabase uses ES256 or HS256 for a given project.
+
+---
+
+## Logging
+
+The server uses structured logging with the `[wigma-ws]` prefix:
+
+| Event | Log Level | Example |
+|-------|-----------|-------|
+| Server startup | INFO | `Port: 9001`, `Max rooms: 1024` |
+| Peer join/leave | INFO | `User <id> joined room <project>` |
+| Auth failure | WARN | `JWT verification failed` |
+| Room lifecycle | INFO | `Created room`, `Destroyed empty room` |
+
+Temporary per-message debug logging has been removed to avoid stdout flooding under load. Only lifecycle and error events are logged.
 
 ### Production checklist
 

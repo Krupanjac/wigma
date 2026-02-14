@@ -71,6 +71,7 @@ src/app/
 │   ├── rendering/
 │   │   ├── renderers/         # Per-node-type PixiJS renderers (12 types)
 │   │   ├── overlays/          # Selection, grid, guide, cursor overlays
+│   │   ├── remote-transform-lerper.ts  # Snapshot interpolation for remote collab
 │   │   ├── node-renderer.registry.ts
 │   │   ├── render-pipeline.ts # 6-step frame lifecycle
 │   │   └── render-manager.ts  # Dirty-only render loop, skips inactive pages
@@ -109,7 +110,9 @@ src/app/
 │       ├── project.service.ts    # IndexedDB persistence, auto-save
 │       ├── keybinding.service.ts # Keyboard shortcut management
 │       ├── export.service.ts     # PNG/JSON export pipeline
-│       └── loader.service.ts     # Loading state management
+│       ├── loader.service.ts     # Loading state management
+│       ├── collab-provider.service.ts  # Bridges WS transport with scene graph
+│       └── collaboration.service.ts    # WebSocket connection management
 ├── panels/                    # Angular UI components (Tailwind)
 │   ├── toolbar/
 │   ├── layers-panel/          # Animated expand/collapse, rename, visibility
@@ -400,6 +403,11 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 | Signal-based reactivity     | Computed signals replace manual subscriptions            |
 | IndexedDB persistence       | Async fire-and-forget writes to IndexedDB (no localStorage size limit) |
 | Texture deduplication       | TextureStore caches image/video textures by data URL hash |
+| Asset deduplication          | Shared assets (images, videos) stored once with reference counting, reducing `.json.gz` by ~90% |
+| Snapshot interpolation       | Remote geometry changes rendered via adaptive interpolation buffer — zero jitter, zero lag accumulation |
+| Adaptive buffer delay        | Interpolation buffer self-tunes from measured network intervals (×1.05), clamped 16–80 ms |
+| Direct spatial index update  | Remote lerper updates R-tree directly, bypasses scene event chain to avoid 60 fps serialization |
+| Environment-gated debug logs | `environment.debugLogging` flag gates verbose `plog()` output; disabled by default |
 
 ---
 
@@ -439,6 +447,83 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 
 ---
 
+## Real-Time Collaboration Engine
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  CollabProviderService                                  │
+│  ─ Bridges WebSocket transport ↔ CanvasEngine scene graph │
+│  ─ Outbound: SceneEvent → serialize → throttle → WS send  │
+│  ─ Inbound:  WS binary  → deserialize → apply to scene   │
+└─────────────────────────────────────────────────────────┘
+                              │
+                ┌─────────────┴───────────────┐
+                │  RemoteTransformLerper      │
+                │  Snapshot interpolation     │
+                │  Adaptive buffer delay      │
+                │  Direct spatial index update │
+                └─────────────────────────────┘
+```
+
+### Snapshot Interpolation (RemoteTransformLerper)
+
+Remote geometry changes (move, resize, scale, rotate) are not applied directly to the scene graph. Instead, they are buffered as timestamped snapshots and played back via **linear interpolation** between two known-good positions:
+
+```
+renderTime = now − adaptiveBufferDelay
+value = snapshot0[prop] + (snapshot1[prop] − snapshot0[prop]) × t
+```
+
+**Key properties:**
+
+| Property | Value | Purpose |
+|----------|-------|---------|
+| Buffer delay | Adaptive (16–80 ms) | Auto-tunes from measured inter-packet interval × 1.05 |
+| Send rate | ~30 Hz (33 ms throttle) | Move and modify operations |
+| Buffer size | 20 snapshots/node | ~660 ms of history at 30 Hz |
+| Settle factor | 0.85/frame | Fast convergence when updates stop |
+| Snap threshold | 0.15 px | Below this, snap to exact target |
+
+**Why snapshot interpolation (not prediction/extrapolation):**
+- Every rendered frame uses **real authoritative data** — no prediction errors
+- Zero jitter — no overshoot or oscillation from velocity estimation
+- Zero lag accumulation — constant, small delay regardless of movement speed
+- Graceful packet loss handling — buffer absorbs one dropped packet
+
+**Performance isolation:** The lerper writes node properties directly via backing fields (`_x`, `_y`, etc.) and updates the R-tree spatial index in-place, deliberately **bypassing `sceneGraph.notifyNodesChanged()`**. This avoids triggering the full listener chain (project serialization, collab diff, layers panel rebuild) at 60 fps.
+
+### Throttle Rates
+
+| Channel | Rate | Constant |
+|---------|------|----------|
+| Move operations | ~30 Hz | `MOVE_THROTTLE_MS = 33` |
+| Modify operations | ~30 Hz | `MODIFY_THROTTLE_MS = 33` |
+| Cursor awareness | ~12 Hz | `AWARENESS_INTERVAL_MS = 80` |
+
+### Loop Prevention
+
+When applying remote operations, `_applyingRemote` is set to `true`. The scene event handler skips broadcasting when this flag is set. Additionally, nodes being interpolated by the `RemoteTransformLerper` are filtered out of outbound broadcasts via `isLerping()` checks.
+
+---
+
+## Debug Logging
+
+Verbose debug logging in `project.service.ts` and `auth.service.ts` is gated behind the `environment.debugLogging` flag:
+
+```typescript
+// frontend/src/environments/environment.ts
+export const environment = {
+  debugLogging: false,  // Set to true for verbose console output
+  // ...
+};
+```
+
+This prevents `plog()` calls from flooding the console during normal operation (especially during drag operations which trigger scene events at 60 fps).
+
+---
+
 ## Tech Stack
 
 | Technology     | Version | Purpose                              |
@@ -447,7 +532,8 @@ localStorage is limited to ~5–10 MB depending on the browser. Design documents
 | PixiJS         | 8.16    | GPU-accelerated 2D canvas rendering  |
 | Tailwind CSS   | 4.1     | Utility-first styling (PostCSS)      |
 | rbush          | 4.0     | R-tree spatial index                 |
-| IndexedDB      | —       | Browser persistence (no size limit)  |
+| Supabase JS    | 2.95    | Auth, DB, Storage client SDK         |
+| Yjs            | 13.6    | CRDT for conflict-free collaboration |
 | TypeScript     | 5.9.3   | Type safety throughout               |
 
 ---

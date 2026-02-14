@@ -239,7 +239,7 @@ A high-performance relay server built with uWebSockets and compiled as C++20:
 | `WsServer`         | uWebSockets event loop, message dispatch, lifecycle           |
 | `RoomManager`      | $O(1)$ room lookup by project ID, lazy create/destroy         |
 | `Room`             | Peer set, zero-copy broadcast, user ID mapping                |
-| `JwtVerifier`      | HS256 verification via OpenSSL HMAC, expiry checking          |
+| `JwtVerifier`      | ES256 (JWKS) + HS256 fallback JWT verification via OpenSSL    |
 | `MessageCodec`     | Binary encode/decode (1-byte prefix), JSON control messages   |
 | `SupabaseClient`   | REST API calls to Supabase (service-role key, bypasses RLS)   |
 | `YjsPersistence`   | Load snapshots + updates, append updates, compact             |
@@ -419,7 +419,7 @@ Six tables with full Row-Level Security:
 2. **JWT issued** by Supabase, stored in browser
 3. **Frontend** attaches JWT to all Supabase SDK calls (auto-handled)
 4. **WebSocket** `join` message includes JWT for server-side verification
-5. **C++ server** verifies JWT signature (HS256 via OpenSSL) and checks project membership
+4. **C++ server** verifies JWT signature (ES256 via JWKS, HS256 fallback) and checks project membership
 
 ### Session Restore
 
@@ -460,7 +460,10 @@ Client A                     Server                     Client B
 - **Yjs** handles conflict-free merging on the client
 - Server stores Yjs updates as opaque blobs — zero interpretation overhead
 - Periodic compaction: server replaces accumulated updates with a single snapshot
-- Awareness channel carries cursor positions and selection state (not persisted)
+- **Awareness channel** carries cursor positions and selection state (not persisted)
+- **Snapshot interpolation** — Remote geometry changes (move, resize) are buffered and played back via linear interpolation between timestamped snapshots. This eliminates jitter and stuttering from packet timing variance. The buffer delay is adaptive (measured from actual inter-packet intervals, ×1.05, clamped 16–80 ms).
+- **Throttle rates** — Outbound move/modify operations are throttled at ~30 Hz (`MOVE_THROTTLE_MS = 33`, `MODIFY_THROTTLE_MS = 33`), cursor awareness at ~12 Hz (`AWARENESS_INTERVAL_MS = 80`)
+- **Performance isolation** — The `RemoteTransformLerper` writes node properties directly via backing fields and updates the spatial index in-place, deliberately bypassing `sceneGraph.notifyNodesChanged()` to avoid triggering the full listener chain (project serialization, collab diffing, layers panel rebuild) at 60 fps
 
 ---
 
@@ -525,6 +528,11 @@ Wigma uses a dual-layer persistence model:
 | WebGL texture clamping      | Export/thumbnail respects GPU MAX_TEXTURE_SIZE            |
 | Debounced persistence       | `queueMicrotask` — one browser write per microtask tick  |
 | Zero-copy WS broadcast      | C++ server forwards binary payloads without deserialization |
+| Snapshot interpolation       | Remote geometry changes rendered via adaptive interpolation buffer — zero jitter, zero lag accumulation |
+| Adaptive buffer delay        | Interpolation buffer auto-tunes from measured network interval (1.05×), min 16 ms, max 80 ms |
+| Direct spatial index update  | Remote lerper updates R-tree directly, bypasses scene event chain (avoids 60 fps serialization) |
+| Environment-gated debug logs | `environment.debugLogging` flag silences verbose console output in production |
+| Asset deduplication          | Shared assets stored once with reference counting, reducing `.json.gz` size by ~90% |
 
 ---
 
